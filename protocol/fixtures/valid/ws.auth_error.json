@@ -1,0 +1,7 @@
+{
+  "type": "auth_error",
+  "payload": {
+    "code": "revoked",
+    "message": "This device token has been revoked."
+  }
+}

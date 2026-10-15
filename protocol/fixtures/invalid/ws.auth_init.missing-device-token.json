@@ -1,0 +1,8 @@
+{
+  "type": "auth_init",
+  "payload": {
+    "device_id": "3f2b8c1e-9d4a-4e7b-a1c6-5f8e2d9b0a73",
+    "device_name": "My MacBook Pro",
+    "client_version": "0.1.0"
+  }
+}

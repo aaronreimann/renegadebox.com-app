@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://renegadebox.com/schemas/ws-message.schema.json",
+  "title": "RenegadeBox WebSocket message",
+  "description": "Envelope relayed by the hub. The hub must only ever see opaque data (device ids, seq numbers, object keys, sealed ciphertext). No message may carry path, old_path, hash, base_hash or device_name, except auth_init.device_name; this is enforced by additionalProperties: false at every level.",
+  "oneOf": [
+    { "$ref": "#/$defs/authInit" },
+    { "$ref": "#/$defs/authOk" },
+    { "$ref": "#/$defs/authError" },
+    { "$ref": "#/$defs/journalAppended" },
+    { "$ref": "#/$defs/syncRequired" },
+    { "$ref": "#/$defs/ping" },
+    { "$ref": "#/$defs/pong" }
+  ],
+  "$defs": {
+    "uuid": { "type": "string", "format": "uuid" },
+    "objectKey": { "type": "string", "pattern": "^rb/journal/[0-9a-f-]{36}/[0-9]{20}$" },
+    "sealedEntry": {
+      "description": "Standard base64 ciphertext of a sealed journal entry.",
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 16384,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+    },
+    "authInit": {
+      "description": "client -> server",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "auth_init" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["device_token", "device_id", "device_name", "client_version"],
+          "properties": {
+            "device_token": { "type": "string", "minLength": 16, "maxLength": 512 },
+            "device_id": { "$ref": "#/$defs/uuid" },
+            "device_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "client_version": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        }
+      }
+    },
+    "authOk": {
+      "description": "server -> client",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "auth_ok" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["device_id", "account_id", "server_time"],
+          "properties": {
+            "device_id": { "$ref": "#/$defs/uuid" },
+            "account_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "server_time": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "authError": {
+      "description": "server -> client",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "auth_error" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "enum": ["invalid_token", "revoked", "rate_limited", "unsupported_version"] },
+            "message": { "type": "string", "maxLength": 512 }
+          }
+        }
+      }
+    },
+    "journalAppended": {
+      "description": "client -> server",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "journal_appended" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seq", "object_key"],
+          "properties": {
+            "seq": { "type": "integer", "minimum": 1 },
+            "object_key": { "$ref": "#/$defs/objectKey" },
+            "sealed_entry": { "$ref": "#/$defs/sealedEntry" }
+          }
+        }
+      }
+    },
+    "syncRequired": {
+      "description": "server -> client",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "sync_required" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["origin_device_id", "seq", "object_key"],
+          "properties": {
+            "origin_device_id": { "$ref": "#/$defs/uuid" },
+            "seq": { "type": "integer", "minimum": 1 },
+            "object_key": { "$ref": "#/$defs/objectKey" },
+            "sealed_entry": { "$ref": "#/$defs/sealedEntry" }
+          }
+        }
+      }
+    },
+    "heartbeatPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nonce": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "ping": {
+      "description": "either direction",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "ping" },
+        "payload": { "$ref": "#/$defs/heartbeatPayload" }
+      }
+    },
+    "pong": {
+      "description": "either direction",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "payload"],
+      "properties": {
+        "type": { "const": "pong" },
+        "payload": { "$ref": "#/$defs/heartbeatPayload" }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "type": "ping",
+  "payload": {
+    "nonce": "n-1",
+    "path": "Documents/finances.pdf"
+  }
+}

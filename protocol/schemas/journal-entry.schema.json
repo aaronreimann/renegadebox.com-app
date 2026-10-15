@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://renegadebox.com/schemas/journal-entry.schema.json",
+  "title": "RenegadeBox journal entry",
+  "description": "Plaintext per-device journal entry. Client-side only: it is sealed (encrypted) before leaving the device, so the hub never sees paths, names or hashes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "device_id", "device_name", "seq", "lamport", "action", "path", "old_path", "hash", "base_hash", "size", "mtime_ms", "blob_id"],
+  "properties": {
+    "v": { "const": 1 },
+    "device_id": { "type": "string", "format": "uuid" },
+    "device_name": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "lamport": { "type": "integer", "minimum": 0 },
+    "action": { "enum": ["added", "modified", "deleted", "renamed"] },
+    "path": { "$ref": "#/$defs/relPath" },
+    "old_path": { "oneOf": [{ "$ref": "#/$defs/relPath" }, { "type": "null" }] },
+    "hash": { "oneOf": [{ "$ref": "#/$defs/sha256Hex" }, { "type": "null" }] },
+    "base_hash": { "oneOf": [{ "$ref": "#/$defs/sha256Hex" }, { "type": "null" }] },
+    "size": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+    "mtime_ms": { "oneOf": [{ "type": "integer" }, { "type": "null" }] },
+    "blob_id": { "oneOf": [{ "$ref": "#/$defs/sha256Hex" }, { "type": "null" }] }
+  },
+  "allOf": [
+    {
+      "if": { "type": "object", "properties": { "action": { "const": "renamed" } }, "required": ["action"] },
+      "then": { "type": "object", "properties": { "old_path": { "$ref": "#/$defs/relPath" } } },
+      "else": { "type": "object", "properties": { "old_path": { "type": "null" } } }
+    },
+    {
+      "if": { "type": "object", "properties": { "action": { "const": "deleted" } }, "required": ["action"] },
+      "then": {
+        "type": "object",
+        "properties": {
+          "hash": { "type": "null" },
+          "size": { "type": "null" },
+          "mtime_ms": { "type": "null" },
+          "blob_id": { "type": "null" }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "hash": { "$ref": "#/$defs/sha256Hex" },
+          "size": { "type": "integer", "minimum": 0 },
+          "mtime_ms": { "type": "integer" },
+          "blob_id": { "$ref": "#/$defs/sha256Hex" }
+        }
+      }
+    },
+    {
+      "if": { "type": "object", "properties": { "action": { "const": "added" } }, "required": ["action"] },
+      "then": { "type": "object", "properties": { "base_hash": { "type": "null" } } }
+    }
+  ],
+  "$defs": {
+    "relPath": {
+      "description": "Relative POSIX path: no leading '/', no '.' or '..' segments, no empty segments, no backslash, no control characters. Lookaround-free so the Rust regex crate can reuse it.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?:[^/\\\\.\\x00-\\x1f][^/\\\\\\x00-\\x1f]*|\\.[^/\\\\.\\x00-\\x1f][^/\\\\\\x00-\\x1f]*|\\.\\.[^/\\\\\\x00-\\x1f]+)(?:/(?:[^/\\\\.\\x00-\\x1f][^/\\\\\\x00-\\x1f]*|\\.[^/\\\\.\\x00-\\x1f][^/\\\\\\x00-\\x1f]*|\\.\\.[^/\\\\\\x00-\\x1f]+))*$"
+    },
+    "sha256Hex": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

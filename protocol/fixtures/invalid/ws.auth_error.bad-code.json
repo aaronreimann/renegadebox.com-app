@@ -1,0 +1,7 @@
+{
+  "type": "auth_error",
+  "payload": {
+    "code": "expired",
+    "message": "Token expired."
+  }
+}

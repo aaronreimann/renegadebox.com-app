@@ -1,0 +1,7 @@
+{
+  "type": "ping",
+  "payload": {
+    "nonce": "n-1760577600"
+  },
+  "device_name": "My MacBook Pro"
+}

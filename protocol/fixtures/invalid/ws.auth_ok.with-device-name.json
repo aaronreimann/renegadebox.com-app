@@ -1,0 +1,9 @@
+{
+  "type": "auth_ok",
+  "payload": {
+    "device_id": "3f2b8c1e-9d4a-4e7b-a1c6-5f8e2d9b0a73",
+    "account_id": "acct_5c9e1a7f",
+    "server_time": 1760577600123,
+    "device_name": "My MacBook Pro"
+  }
+}
