@@ -70,6 +70,7 @@ pub struct Engine {
     report: SyncReport,
     /// Allow a scan to treat every previously synced file as deleted (see `scan`).
     pub allow_mass_delete: bool,
+    pub on_appended: Option<tokio::sync::mpsc::UnboundedSender<crate::hub::AppendedEvent>>,
 }
 
 struct LocalStat {
@@ -126,7 +127,11 @@ impl Engine {
 
         let state = State::open(&profile.state_path())?;
         let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
-        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false })
+        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None })
+    }
+
+    pub fn set_on_appended(&mut self, tx: tokio::sync::mpsc::UnboundedSender<crate::hub::AppendedEvent>) {
+        self.on_appended = Some(tx);
     }
 
     pub fn root(&self) -> &Path {
@@ -727,6 +732,12 @@ impl Engine {
         let sealed = self.keys.seal(&serde_json::to_vec(&entry)?, &key)?;
         let digest = crypto::sha256_hex(&sealed);
         self.state.set_meta("pending_append", &format!("{seq}:{digest}"))?;
+        let sealed_b64 = if sealed.len() <= 16384 {
+            use base64::Engine;
+            Some(base64::engine::general_purpose::STANDARD.encode(&sealed))
+        } else {
+            None
+        };
         match self.storage.put_bytes_if_absent(&key, sealed).await {
             Ok(()) => {}
             Err(PutIfAbsentError::Exists) => {
@@ -747,6 +758,13 @@ impl Engine {
         self.state.set_meta("next_seq", &(seq + 1).to_string())?;
         self.state.set_cursor(&self.cfg.device_id, seq)?;
         self.state.set_meta("pending_append", "")?;
+        if let Some(tx) = &self.on_appended {
+            let _ = tx.send(crate::hub::AppendedEvent {
+                seq,
+                object_key: key,
+                sealed_entry: sealed_b64,
+            });
+        }
         info!("{:?} {}", action, path);
         Ok(entry)
     }

@@ -15,6 +15,7 @@ struct Cli {
     cmd: Cmd,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Cmd {
     /// Connect this device to a bucket (creates the encrypted vault on first use).
@@ -35,6 +36,12 @@ enum Cmd {
         secret_access_key: Option<String>,
         #[arg(long)]
         device_name: Option<String>,
+        /// Hub WebSocket URL for real-time notifications (ws://... or wss://...)
+        #[arg(long, env = "RBOX_HUB_URL")]
+        hub_url: Option<String>,
+        /// Device token issued by the RenegadeBox dashboard.
+        #[arg(long, env = "RBOX_DEVICE_TOKEN", hide_env_values = true)]
+        device_token: Option<String>,
         /// Store secrets in a 0600 file instead of the OS keychain (headless servers, tests).
         #[arg(long)]
         insecure_file_keystore: bool,
@@ -105,7 +112,20 @@ async fn main() -> Result<()> {
     let profile = Profile::locate()?;
 
     match cli.cmd {
-        Cmd::Init { folder, bucket, region, endpoint, access_key_id, secret_access_key, device_name, insecure_file_keystore, kdf_memory_kib, force } => {
+        Cmd::Init {
+            folder,
+            bucket,
+            region,
+            endpoint,
+            access_key_id,
+            secret_access_key,
+            device_name,
+            hub_url,
+            device_token,
+            insecure_file_keystore,
+            kdf_memory_kib,
+            force,
+        } => {
             if profile.config_path().exists() && !force {
                 bail!("{} already exists (use --force to re-initialize this device)", profile.config_path().display());
             }
@@ -138,6 +158,7 @@ async fn main() -> Result<()> {
                 device_name,
                 key_store: if insecure_file_keystore { KeyStoreKind::InsecureFile } else { KeyStoreKind::Keychain },
                 vault_pin: String::new(),
+                hub_url,
             };
             let storage = engine::storage_for(&cfg, &secret);
             let exists = storage
@@ -149,6 +170,9 @@ async fn main() -> Result<()> {
             cfg.vault_pin = pin;
             profile.set_secret(&cfg, SECRET_S3, &secret)?;
             profile.set_secret(&cfg, SECRET_MASTER, &master.to_b64())?;
+            if let Some(ref token) = device_token {
+                profile.set_secret(&cfg, config::SECRET_DEVICE_TOKEN, token)?;
+            }
             profile.save(&cfg)?;
             let _ = std::fs::remove_file(profile.state_path());
             println!(
@@ -174,8 +198,9 @@ async fn main() -> Result<()> {
             }
         }
         Cmd::Watch { poll_secs } => {
+            let prof = profile.clone();
             let mut e = Engine::open(profile).await?;
-            renegadebox_engine::watch::run(&mut e, Duration::from_secs(poll_secs.max(1))).await?;
+            renegadebox_engine::watch::run(&mut e, &prof, Duration::from_secs(poll_secs.max(1))).await?;
         }
         Cmd::Status => {
             let mut e = Engine::open(profile).await?;

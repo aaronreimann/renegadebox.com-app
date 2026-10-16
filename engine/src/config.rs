@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 pub const SECRET_S3: &str = "s3-secret-access-key";
 pub const SECRET_MASTER: &str = "master-key";
+pub const SECRET_DEVICE_TOKEN: &str = "device-token";
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -31,8 +32,11 @@ pub struct Config {
     pub key_store: KeyStoreKind,
     /// sha256 of rb/vault.json at first unlock; a change means someone replaced the vault.
     pub vault_pin: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hub_url: Option<String>,
 }
 
+#[derive(Clone, Debug)]
 pub struct Profile {
     pub dir: PathBuf,
 }

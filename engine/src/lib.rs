@@ -8,3 +8,4 @@ pub mod paths;
 pub mod state;
 pub mod storage;
 pub mod watch;
+pub mod hub;
