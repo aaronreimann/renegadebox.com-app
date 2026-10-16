@@ -166,6 +166,128 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(mainTs).toContain("reveal_in_finder");
     expect(mainTs).toContain("delete_file");
   });
+
+  it("has sync pause and resume capabilities across rust backend and frontend", () => {
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const html = readFileSync(htmlPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(commands).toContain("pub fn pause_sync");
+    expect(commands).toContain("pub fn resume_sync");
+    expect(commands).toContain("pub fn is_sync_paused");
+    expect(lib).toContain("commands::pause_sync");
+    expect(lib).toContain("commands::resume_sync");
+    expect(html).toContain("pause-sync-btn");
+    expect(html).toContain("sync-paused-badge");
+    expect(mainTs).toContain("handleTogglePause");
+    expect(mainTs).toContain("sync-paused");
+    expect(mainTs).toContain("sync-resumed");
+  });
+
+  it("has file renaming and conflict resolution workflows", () => {
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const html = readFileSync(htmlPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(commands).toContain("pub fn rename_file");
+    expect(commands).toContain("pub fn resolve_conflict");
+    expect(lib).toContain("commands::rename_file");
+    expect(lib).toContain("commands::resolve_conflict");
+    expect(html).toContain("conflict-modal");
+    expect(html).toContain("resolve-keep-local-btn");
+    expect(html).toContain("resolve-keep-conflicted-btn");
+    expect(html).toContain("resolve-keep-both-btn");
+    expect(mainTs).toContain("handleRenameFile");
+    expect(mainTs).toContain("resolveConflict");
+  });
+
+  it("has file version history and audit log inspection", () => {
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const html = readFileSync(htmlPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(commands).toContain("pub async fn get_file_history");
+    expect(commands).toContain("pub struct FileRevision");
+    expect(lib).toContain("commands::get_file_history");
+    expect(html).toContain("history-modal");
+    expect(html).toContain("history-list-container");
+    expect(mainTs).toContain("openHistoryModal");
+  });
+
+  it("has interactive in-app settings and ignored patterns management", () => {
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const html = readFileSync(htmlPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(commands).toContain("pub fn update_vault_config");
+    expect(commands).toContain("pub fn get_ignored_patterns");
+    expect(commands).toContain("pub fn save_ignored_patterns");
+    expect(commands).toContain("pub fn export_file_copy");
+    expect(lib).toContain("commands::update_vault_config");
+    expect(lib).toContain("commands::get_ignored_patterns");
+    expect(lib).toContain("commands::save_ignored_patterns");
+    expect(lib).toContain("commands::export_file_copy");
+
+    expect(html).toContain("cfg-device-name-input");
+    expect(html).toContain("cfg-bucket-input");
+    expect(html).toContain("cfg-region-input");
+    expect(html).toContain("cfg-ignored-patterns-input");
+    expect(html).toContain("save-settings-btn");
+    expect(mainTs).toContain("handleSaveSettings");
+    expect(mainTs).toContain("handleExportCopy");
+  });
+
+  it("has breadcrumbs, dual grid/list views, sortable headers, and context menu", () => {
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const cssPath = join(DESKTOP_DIR, "src/style.css");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const html = readFileSync(htmlPath, "utf-8");
+    const css = readFileSync(cssPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(html).toContain("breadcrumb-container");
+    expect(html).toContain("view-list-btn");
+    expect(html).toContain("view-grid-btn");
+    expect(html).toContain("file-grid");
+    expect(html).toContain("context-menu");
+    expect(html).toContain("th-name");
+    expect(html).toContain("th-size");
+
+    expect(css).toContain(".breadcrumb-container");
+    expect(css).toContain(".file-grid");
+    expect(css).toContain(".context-menu");
+    expect(css).toContain(".filter-chip");
+
+    expect(mainTs).toContain("renderBreadcrumbs");
+    expect(mainTs).toContain("renderFileGrid");
+    expect(mainTs).toContain("showContextMenu");
+    expect(mainTs).toContain("toggleStar");
+  });
 });
 
 

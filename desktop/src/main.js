@@ -209,28 +209,25 @@ async function tauriInvoke(cmd, args) {
     return {
       initialized: true,
       folder: "/Users/me/RenegadeBox",
-      bucket: "my-box",
+      bucket: "my-renegadebox-bucket",
       region: "us-east-1",
-      endpoint: "http://localhost:8333",
-      device_id: "00c4a3c6-7bb6-4a3d-8349-025db24bcceb",
-      device_name: "My MacBook",
+      endpoint: "",
+      device_id: "68a3c8a0-c930-4984-bc66-079164e213f6",
+      device_name: "My-MBP",
       hub_url: "ws://localhost:8787/ws",
       key_store: "macOS Keychain (Hardware-backed)",
-      total_files: 11,
+      total_files: 5,
       pending_changes: 0,
       total_bytes: 42180900
     };
   }
   if (cmd === "list_synced_files") {
     return [
-      { path: "!!Photoshops", size: 0, status: "synced", mtime_ns: Date.now() * 1e6 },
-      { path: "3D printer parts", size: 0, status: "synced", mtime_ns: Date.now() * 1e6 },
-      { path: "2019_05_10_08_13_48.mp4", size: 14200000, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 60 },
-      { path: "2019_05_11_14_22_18.mp4", size: 8400000, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 59 },
-      { path: "2019_05_11_14_24_49.mp4", size: 6300000, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 58 },
-      { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 5 },
-      { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 2 },
-      { path: "Photos/team-offsite.jpg", size: 5214000, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 1 }
+      { path: "welcome.txt", size: 124, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 2, hash: "9e6db089d244e029996efe34bfc4aeff", blob_id: "825e8d97b0b87e5af6d485e2ddd27991" },
+      { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 5, hash: "a1b2c3d4e5f60718293a", blob_id: "deadbeefcafebabe0102" },
+      { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 1, hash: "5e6f7a8b9c0d1e2f3a4b", blob_id: "1234567890abcdef1234" },
+      { path: "Photos/ship-flag.jpg", size: 5214000, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 3, hash: "aabbccddeeff00112233", blob_id: "f0f0e1e1d2d2c3c3b4b4" },
+      { path: "Notes (conflicted copy My-MBP 2026-10-15).txt", size: 1024, status: "conflicted", mtime_ns: Date.now() * 1e6 - 3600000, hash: "conflict999999999999", blob_id: "conflictedblob000000" }
     ];
   }
   if (cmd === "trigger_sync") {
@@ -243,11 +240,90 @@ async function tauriInvoke(cmd, args) {
       failed: 0
     };
   }
+  if (cmd === "is_sync_paused") {
+    return false;
+  }
+  if (cmd === "get_ignored_patterns") {
+    return [".DS_Store", "Thumbs.db", "*.tmp", ".git/", "node_modules/"];
+  }
+  if (cmd === "get_file_history") {
+    return [
+      {
+        timestamp_ms: Date.now() - 3600000,
+        date_str: "Today at 22:30 UTC",
+        device_name: "My-MBP",
+        lamport: 42,
+        size: 18450,
+        hash: "5e6f7a8b9c0d1e2f3a4b",
+        blob_id: "1234567890abcdef1234",
+        action: "Current Head",
+        is_current: true
+      },
+      {
+        timestamp_ms: Date.now() - 86400000,
+        date_str: "Yesterday at 14:15 UTC",
+        device_name: "My-MBP",
+        lamport: 18,
+        size: 14200,
+        hash: "11223344556677889900",
+        blob_id: "abcdefabcdef12345678",
+        action: "Initial Commit",
+        is_current: false
+      }
+    ];
+  }
   return {};
 }
 var allFiles = [];
 var selectedFile = null;
 var currentVaultStatus = null;
+var isSyncPaused = false;
+var currentDirectory = "";
+var currentFilter = "all";
+var currentSortKey = "name";
+var currentSortAsc = true;
+var currentViewMode = "list";
+var activeNav = "files";
+var starredPaths = new Set;
+var navHistory = [""];
+var navHistoryIndex = 0;
+var activityLogs = [
+  {
+    id: "init-1",
+    title: "Vault online & watching ~/RenegadeBox",
+    subtitle: "Native macOS FSEvents active with 500ms debouncing",
+    time: "Just now",
+    type: "system",
+    timestamp: Date.now()
+  }
+];
+function loadStarred() {
+  try {
+    const raw = localStorage.getItem("rbox_starred");
+    if (raw)
+      starredPaths = new Set(JSON.parse(raw));
+  } catch (_) {
+    starredPaths = new Set;
+  }
+}
+function saveStarred() {
+  try {
+    localStorage.setItem("rbox_starred", JSON.stringify(Array.from(starredPaths)));
+  } catch (_) {}
+}
+function logActivity(title, subtitle, type = "system") {
+  activityLogs.unshift({
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    title,
+    subtitle,
+    time: "Just now",
+    type,
+    timestamp: Date.now()
+  });
+  if (activityLogs.length > 50)
+    activityLogs.pop();
+  renderActivityFeed();
+}
 function getFileTypeInfo(filePath) {
   const isFolder = !filePath.includes(".") || filePath.endsWith("/");
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
@@ -329,6 +405,53 @@ function escapeHtml(str) {
     "'": "&#039;"
   })[m] || m);
 }
+function getFilteredAndSortedFiles() {
+  const searchInput = document.getElementById("search-input");
+  const q = searchInput?.value.toLowerCase().trim() || "";
+  let list = allFiles.slice();
+  if (activeNav === "starred") {
+    list = list.filter((f) => starredPaths.has(f.path));
+  } else if (q.length === 0 && currentDirectory) {
+    list = list.filter((f) => f.path.startsWith(`${currentDirectory}/`));
+  }
+  if (currentFilter === "documents") {
+    list = list.filter((f) => {
+      const ext = f.path.split(".").pop()?.toLowerCase() || "";
+      return ["pdf", "txt", "doc", "docx", "md", "rtf", "odt"].includes(ext);
+    });
+  } else if (currentFilter === "media") {
+    list = list.filter((f) => {
+      const ext = f.path.split(".").pop()?.toLowerCase() || "";
+      return ["mp4", "mov", "avi", "mkv", "jpg", "jpeg", "png", "gif", "webp", "mp3", "wav"].includes(ext);
+    });
+  } else if (currentFilter === "code") {
+    list = list.filter((f) => {
+      const ext = f.path.split(".").pop()?.toLowerCase() || "";
+      return ["rs", "ts", "js", "py", "json", "toml", "html", "css", "sh", "yaml", "yml"].includes(ext);
+    });
+  } else if (currentFilter === "conflicted") {
+    list = list.filter((f) => f.status === "conflicted");
+  }
+  if (q.length > 0) {
+    list = list.filter((f) => f.path.toLowerCase().includes(q));
+  }
+  list.sort((a, b) => {
+    let comp = 0;
+    if (currentSortKey === "name") {
+      comp = a.path.localeCompare(b.path);
+    } else if (currentSortKey === "type") {
+      const typeA = getFileTypeInfo(a.path).label;
+      const typeB = getFileTypeInfo(b.path).label;
+      comp = typeA.localeCompare(typeB);
+    } else if (currentSortKey === "size") {
+      comp = a.size - b.size;
+    } else if (currentSortKey === "status") {
+      comp = a.status.localeCompare(b.status);
+    }
+    return currentSortAsc ? comp : -comp;
+  });
+  return list;
+}
 function renderFileTable(files) {
   const tbody = document.getElementById("file-table-body");
   if (!tbody)
@@ -338,10 +461,10 @@ function renderFileTable(files) {
       <tr>
         <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
           <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 0.5rem;">
-            No synchronized files yet
+            No synchronized files found
           </div>
           <div style="font-size: 0.85rem;">
-            Drag any files or folders into your local sync directory to encrypt and sync to S3.
+            Add files or drag them into <strong>~/RenegadeBox</strong> to automatically encrypt and stash in S3.
           </div>
         </td>
       </tr>
@@ -351,6 +474,7 @@ function renderFileTable(files) {
   tbody.innerHTML = files.map((file, idx) => {
     const isSelected = selectedFile?.path === file.path;
     const typeInfo = getFileTypeInfo(file.path);
+    const isStarred = starredPaths.has(file.path);
     let badgeClass = "";
     let badgeChar = "✓";
     let statusText = "Synced";
@@ -363,16 +487,17 @@ function renderFileTable(files) {
       badgeChar = "⟳";
       statusText = "Syncing";
     }
+    const displayPath = currentDirectory && file.path.startsWith(`${currentDirectory}/`) ? file.path.slice(currentDirectory.length + 1) : file.path;
     return `
       <tr class="file-row ${isSelected ? "selected" : ""}" data-idx="${idx}" data-path="${escapeHtml(file.path)}">
         <td>
           <div class="file-name-cell">
-            <span class="chevron-icon">▶</span>
+            <span class="chevron-icon" style="color: ${isStarred ? "#fbbf24" : "#cbd5e1"}; font-size: 0.9rem;" title="${isStarred ? "Starred" : "Unstarred"}">${isStarred ? "★" : "▶"}</span>
             <div class="icon-with-sync-badge">
               ${typeInfo.iconSvg}
               <div class="sync-badge-overlay ${badgeClass}">${badgeChar}</div>
             </div>
-            <span class="file-title-text">${escapeHtml(file.path)}</span>
+            <span class="file-title-text">${escapeHtml(displayPath)}</span>
           </div>
         </td>
         <td>
@@ -391,28 +516,216 @@ function renderFileTable(files) {
   }).join("");
   tbody.querySelectorAll(".file-row").forEach((row) => {
     row.addEventListener("click", () => {
-      const idx = Number(row.getAttribute("data-idx"));
-      const item = files[idx];
-      if (item) {
+      const path = row.getAttribute("data-path");
+      const item = files.find((f) => f.path === path);
+      if (item)
         selectFile(item);
-      }
     });
     row.addEventListener("dblclick", () => {
-      const idx = Number(row.getAttribute("data-idx"));
-      const item = files[idx];
+      const path = row.getAttribute("data-path");
+      const item = files.find((f) => f.path === path);
+      if (item) {
+        if (item.path.includes("/")) {
+          const parts = item.path.split("/");
+          if (parts.length > 1 && item.size === 0) {
+            enterDirectory(parts[0]);
+            return;
+          }
+        }
+        tauriInvoke("open_file", { path: item.path }).catch(() => {
+          tauriInvoke("open_sync_folder");
+        });
+      }
+    });
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const path = row.getAttribute("data-path");
+      const item = files.find((f) => f.path === path);
+      if (item) {
+        selectFile(item);
+        showContextMenu(e.clientX, e.clientY, item);
+      }
+    });
+  });
+}
+function renderFileGrid(files) {
+  const grid = document.getElementById("file-grid");
+  if (!grid)
+    return;
+  if (files.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
+        <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 0.5rem;">
+          No files in this view
+        </div>
+      </div>
+    `;
+    return;
+  }
+  grid.innerHTML = files.map((file) => {
+    const isSelected = selectedFile?.path === file.path;
+    const typeInfo = getFileTypeInfo(file.path);
+    const isStarred = starredPaths.has(file.path);
+    let badgeClass = "";
+    let badgeChar = "✓";
+    if (file.status === "conflicted") {
+      badgeClass = "conflict";
+      badgeChar = "!";
+    } else if (file.status === "pending_upload") {
+      badgeClass = "syncing";
+      badgeChar = "⟳";
+    }
+    const displayPath = currentDirectory && file.path.startsWith(`${currentDirectory}/`) ? file.path.slice(currentDirectory.length + 1) : file.path;
+    return `
+      <div class="grid-card ${isSelected ? "selected" : ""}" data-path="${escapeHtml(file.path)}">
+        <div class="grid-card-icon">
+          ${typeInfo.iconSvg.replace('width="20" height="20"', 'width="42" height="42"')}
+          <div class="sync-badge-overlay ${badgeClass}" style="bottom: 0; right: 0;">${badgeChar}</div>
+        </div>
+        <div class="grid-card-title" title="${escapeHtml(file.path)}">
+          ${isStarred ? "★ " : ""}${escapeHtml(displayPath)}
+        </div>
+        <div class="grid-card-meta">
+          ${formatBytes(file.size)}
+        </div>
+      </div>
+    `;
+  }).join("");
+  grid.querySelectorAll(".grid-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const path = card.getAttribute("data-path");
+      const item = files.find((f) => f.path === path);
+      if (item)
+        selectFile(item);
+    });
+    card.addEventListener("dblclick", () => {
+      const path = card.getAttribute("data-path");
+      const item = files.find((f) => f.path === path);
       if (item) {
         tauriInvoke("open_file", { path: item.path }).catch(() => {
           tauriInvoke("open_sync_folder");
         });
       }
     });
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const path = card.getAttribute("data-path");
+      const item = files.find((f) => f.path === path);
+      if (item) {
+        selectFile(item);
+        showContextMenu(e.clientX, e.clientY, item);
+      }
+    });
   });
+}
+function renderActiveViews() {
+  const filtered = getFilteredAndSortedFiles();
+  const tableView = document.getElementById("table-view-container");
+  const gridView = document.getElementById("file-grid");
+  const activityView = document.getElementById("activity-view-container");
+  if (activeNav === "activity") {
+    if (tableView)
+      tableView.style.display = "none";
+    if (gridView)
+      gridView.style.display = "none";
+    if (activityView)
+      activityView.style.display = "block";
+    renderActivityFeed();
+    return;
+  }
+  if (activityView)
+    activityView.style.display = "none";
+  if (currentViewMode === "list") {
+    if (tableView)
+      tableView.style.display = "block";
+    if (gridView)
+      gridView.style.display = "none";
+    renderFileTable(filtered);
+  } else {
+    if (tableView)
+      tableView.style.display = "none";
+    if (gridView)
+      gridView.style.display = "grid";
+    renderFileGrid(filtered);
+  }
+  renderBreadcrumbs();
+  const statFiles = document.getElementById("stat-files");
+  if (statFiles)
+    statFiles.textContent = String(filtered.length);
+}
+function renderBreadcrumbs() {
+  const container = document.getElementById("breadcrumb-container");
+  if (!container)
+    return;
+  if (!currentDirectory) {
+    container.innerHTML = `<span class="breadcrumb-item root active" data-path="">\uD83C\uDFF4‍☠️ Vault</span>`;
+    return;
+  }
+  const parts = currentDirectory.split("/");
+  let html = `<span class="breadcrumb-item root" data-path="">\uD83C\uDFF4‍☠️ Vault</span>`;
+  let accumulated = "";
+  parts.forEach((p, idx) => {
+    accumulated = accumulated ? `${accumulated}/${p}` : p;
+    const isLast = idx === parts.length - 1;
+    html += `
+      <span class="breadcrumb-separator">/</span>
+      <span class="breadcrumb-item ${isLast ? "active" : ""}" data-path="${escapeHtml(accumulated)}">${escapeHtml(p)}</span>
+    `;
+  });
+  container.innerHTML = html;
+  container.querySelectorAll(".breadcrumb-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      const p = el.getAttribute("data-path") || "";
+      enterDirectory(p);
+    });
+  });
+}
+function enterDirectory(dir) {
+  currentDirectory = dir;
+  if (navHistory[navHistoryIndex] !== dir) {
+    navHistory = navHistory.slice(0, navHistoryIndex + 1);
+    navHistory.push(dir);
+    navHistoryIndex = navHistory.length - 1;
+  }
+  renderActiveViews();
+}
+function renderActivityFeed() {
+  const stream = document.getElementById("activity-log-stream");
+  if (!stream)
+    return;
+  if (activityLogs.length === 0) {
+    stream.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No recent activities</div>`;
+    return;
+  }
+  stream.innerHTML = activityLogs.map((log) => {
+    let icon = "⚓";
+    if (log.type === "upload")
+      icon = "↑";
+    if (log.type === "download")
+      icon = "↓";
+    if (log.type === "conflict")
+      icon = "⚠️";
+    return `
+      <div class="activity-log-card">
+        <div class="activity-log-icon">${icon}</div>
+        <div class="activity-log-info">
+          <div class="activity-log-title">${escapeHtml(log.title)}</div>
+          <div class="activity-log-sub">${escapeHtml(log.subtitle)}</div>
+        </div>
+        <div class="activity-log-time">${escapeHtml(log.time)}</div>
+      </div>
+    `;
+  }).join("");
 }
 function selectFile(file) {
   selectedFile = file;
   document.querySelectorAll(".file-row").forEach((row) => {
     const path = row.getAttribute("data-path");
     row.classList.toggle("selected", path === file.path);
+  });
+  document.querySelectorAll(".grid-card").forEach((card) => {
+    const path = card.getAttribute("data-path");
+    card.classList.toggle("selected", path === file.path);
   });
   const typeInfo = getFileTypeInfo(file.path);
   const nameEl = document.getElementById("inspector-file-name");
@@ -421,8 +734,8 @@ function selectFile(file) {
   const s3Target = document.getElementById("inspector-s3-target");
   const hashEl = document.getElementById("inspector-hash");
   const blobEl = document.getElementById("inspector-blob-id");
-  const activityTitle = document.getElementById("activity-title");
-  const activityTime = document.getElementById("activity-time");
+  const conflictBanner = document.getElementById("inspector-conflict-banner");
+  const starBtn = document.getElementById("inspector-star-btn");
   if (nameEl)
     nameEl.textContent = file.path;
   if (metaEl) {
@@ -441,40 +754,37 @@ function selectFile(file) {
     blobEl.title = file.blob_id ? `blobs/${file.blob_id}` : "";
   }
   if (s3Target) {
-    const bucket = currentVaultStatus?.bucket || "my-box";
+    const bucket = currentVaultStatus?.bucket || "my-renegadebox-bucket";
     s3Target.textContent = file.blob_id ? `s3://${bucket}/blobs/${file.blob_id.slice(0, 12)}...` : `s3://${bucket}/${file.path}`;
     s3Target.title = file.blob_id ? `s3://${bucket}/blobs/${file.blob_id}` : "";
   }
-  if (activityTitle) {
-    activityTitle.textContent = `Selected ${file.path}`;
+  if (conflictBanner) {
+    conflictBanner.style.display = file.status === "conflicted" ? "block" : "none";
   }
-  if (activityTime) {
-    activityTime.textContent = `Encrypted & stored zero-knowledge in S3`;
+  if (starBtn) {
+    const isStarred = starredPaths.has(file.path);
+    starBtn.textContent = isStarred ? "★ Starred" : "⭐ Star";
   }
 }
 async function refreshVaultStatus() {
   try {
     const status = await tauriInvoke("get_vault_status");
     currentVaultStatus = status;
-    const statFiles = document.getElementById("stat-files");
     const statStorage = document.getElementById("stat-storage");
     const statPending = document.getElementById("stat-pending");
     const sidebarBucket = document.getElementById("sidebar-bucket-name");
     const sidebarUser = document.getElementById("sidebar-user-name");
     const sidebarDevice = document.getElementById("sidebar-device-id");
     const keystoreEl = document.getElementById("inspector-keystore");
-    const cfgFolder = document.getElementById("cfg-folder");
-    const cfgBucket = document.getElementById("cfg-bucket");
-    const cfgEndpoint = document.getElementById("cfg-endpoint");
-    const cfgRegion = document.getElementById("cfg-region");
-    const cfgDeviceId = document.getElementById("cfg-device-id");
-    const cfgHub = document.getElementById("cfg-hub");
-    if (statFiles)
-      statFiles.textContent = String(status.total_files || allFiles.length);
+    const meterFill = document.getElementById("storage-meter-fill");
     if (statStorage)
       statStorage.textContent = formatBytes(status.total_bytes);
     if (statPending)
       statPending.textContent = String(status.pending_changes);
+    if (meterFill) {
+      const pct = Math.min(100, Math.max(8, Math.round(status.total_bytes / (5 * 1024 * 1024 * 1024) * 100)));
+      meterFill.style.width = `${pct}%`;
+    }
     if (sidebarBucket && status.bucket)
       sidebarBucket.textContent = status.bucket;
     if (sidebarUser && status.device_name)
@@ -483,20 +793,30 @@ async function refreshVaultStatus() {
       sidebarDevice.textContent = status.device_id ? `Device: ${status.device_id.slice(0, 8)}...` : "Zero-Knowledge Sync";
     if (keystoreEl && status.key_store)
       keystoreEl.textContent = status.key_store;
-    if (cfgFolder && status.folder)
-      cfgFolder.textContent = status.folder;
-    if (cfgBucket && status.bucket)
-      cfgBucket.textContent = status.bucket;
-    if (cfgEndpoint)
-      cfgEndpoint.textContent = status.endpoint || "http://localhost:8333 (SeaweedFS S3)";
-    if (cfgRegion && status.region)
-      cfgRegion.textContent = status.region;
-    if (cfgDeviceId)
-      cfgDeviceId.textContent = status.device_id || "Unregistered";
-    if (cfgHub && status.hub_url)
-      cfgHub.textContent = status.hub_url;
+    isSyncPaused = await tauriInvoke("is_sync_paused").catch(() => false);
+    updatePauseUI(isSyncPaused);
   } catch (err) {
     console.error("Failed to load vault status:", err);
+  }
+}
+function updatePauseUI(paused) {
+  isSyncPaused = paused;
+  const pauseBtn = document.getElementById("pause-sync-btn");
+  const pausedBadge = document.getElementById("sync-paused-badge");
+  const pausedIndicator = document.getElementById("toolbar-paused-indicator");
+  const footerStatus = document.getElementById("footer-sync-status");
+  if (pauseBtn) {
+    pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+  }
+  if (pausedBadge) {
+    pausedBadge.style.display = paused ? "inline-block" : "none";
+  }
+  if (pausedIndicator) {
+    pausedIndicator.style.display = paused ? "inline" : "none";
+  }
+  if (footerStatus) {
+    footerStatus.textContent = paused ? "⏸ Sync Paused" : "✓ Connected to S3";
+    footerStatus.style.color = paused ? "var(--status-pending)" : "var(--status-synced)";
   }
 }
 async function refreshFilesList() {
@@ -505,12 +825,13 @@ async function refreshFilesList() {
     let files = await tauriInvoke("list_synced_files");
     if (!hasTauri && files.length === 0) {
       files = [
+        { path: "welcome.txt", size: 124, status: "synced", mtime_ns: Date.now() * 1e6 },
         { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1e6 },
         { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1e6 }
       ];
     }
     allFiles = files;
-    renderFileTable(allFiles);
+    renderActiveViews();
     if (!selectedFile && allFiles.length > 0) {
       selectFile(allFiles[0]);
     } else if (selectedFile) {
@@ -524,28 +845,16 @@ async function refreshFilesList() {
 }
 async function handleSyncNow() {
   const syncBtn = document.getElementById("sync-now-btn");
-  const activityTitle = document.getElementById("activity-title");
-  const activityTime = document.getElementById("activity-time");
   if (syncBtn) {
     syncBtn.disabled = true;
     syncBtn.textContent = "⚔️ Hoisting...";
   }
-  if (activityTitle)
-    activityTitle.textContent = "⚔️ Hoisting booty to S3...";
-  if (activityTime)
-    activityTime.textContent = "Scanning local changes -> encrypting -> pushing";
+  logActivity("Manual sync triggered", "Scanning local folder -> encrypting -> pushing to S3", "upload");
   try {
     const result = await tauriInvoke("trigger_sync");
-    if (activityTitle) {
-      activityTitle.textContent = result.success ? "⚓ Booty stashed & synced" : "⚠️ Storm warning";
-    }
-    if (activityTime)
-      activityTime.textContent = result.message;
+    logActivity(result.success ? "⚓ Booty stashed & synced" : "⚠️ Storm warning", result.message, result.success ? "system" : "conflict");
   } catch (err) {
-    if (activityTitle)
-      activityTitle.textContent = "⚠️ Sync notice";
-    if (activityTime)
-      activityTime.textContent = String(err);
+    logActivity("⚠️ Sync error", String(err), "conflict");
   } finally {
     if (syncBtn) {
       syncBtn.disabled = false;
@@ -555,21 +864,251 @@ async function handleSyncNow() {
     await refreshFilesList();
   }
 }
-function openSettingsModal() {
+async function handleTogglePause() {
+  try {
+    if (isSyncPaused) {
+      await tauriInvoke("resume_sync");
+      logActivity("▶ Sync resumed", "Background file watcher and automatic S3 sync enabled", "system");
+      updatePauseUI(false);
+    } else {
+      await tauriInvoke("pause_sync");
+      logActivity("⏸ Sync paused", "Background automatic synchronization suspended", "system");
+      updatePauseUI(true);
+    }
+  } catch (err) {
+    console.error("Failed to toggle sync pause:", err);
+  }
+}
+async function handleRenameFile(file) {
+  const currentName = file.path.split("/").pop() || file.path;
+  const newName = prompt(`Enter new name for "${currentName}":`, currentName);
+  if (!newName || newName.trim() === currentName)
+    return;
+  const parts = file.path.split("/");
+  parts.pop();
+  const newPath = parts.length > 0 ? `${parts.join("/")}/${newName.trim()}` : newName.trim();
+  try {
+    await tauriInvoke("rename_file", { oldPath: file.path, newPath });
+    logActivity(`\uD83C\uDFF7️ Renamed "${currentName}"`, `New path: ${newPath}`, "system");
+    await refreshFilesList();
+    const updated = allFiles.find((f) => f.path === newPath);
+    if (updated)
+      selectFile(updated);
+  } catch (err) {
+    alert("Could not rename file: " + err);
+  }
+}
+async function handleDeleteFile(file) {
+  const confirmDel = confirm(`Move "${file.path}" to macOS Trash?
+
+This will also remove it from your S3 vault.`);
+  if (!confirmDel)
+    return;
+  try {
+    await tauriInvoke("delete_file", { path: file.path });
+    logActivity(`\uD83D\uDDD1️ Moved to Trash`, file.path, "system");
+    selectedFile = null;
+    await refreshFilesList();
+    await refreshVaultStatus();
+  } catch (err) {
+    alert("Failed to delete file: " + err);
+  }
+}
+async function handleExportCopy(file) {
+  try {
+    const dst = await tauriInvoke("export_file_copy", { path: file.path });
+    logActivity(`\uD83D\uDCBE Exported copy to Downloads`, dst, "download");
+    alert(`File exported successfully to:
+${dst}`);
+  } catch (err) {
+    alert("Export failed: " + err);
+  }
+}
+function toggleStar(path) {
+  if (starredPaths.has(path)) {
+    starredPaths.delete(path);
+  } else {
+    starredPaths.add(path);
+  }
+  saveStarred();
+  if (selectedFile?.path === path)
+    selectFile(selectedFile);
+  renderActiveViews();
+}
+var activeConflictedFile = null;
+function openConflictModal(file) {
+  activeConflictedFile = file;
+  const modal = document.getElementById("conflict-modal");
+  const fileName = document.getElementById("conflict-file-name");
+  const fileDetails = document.getElementById("conflict-file-details");
+  if (fileName)
+    fileName.textContent = file.path;
+  if (fileDetails)
+    fileDetails.textContent = `Size: ${formatBytes(file.size)} • Status: Conflicted copy`;
+  if (modal)
+    modal.classList.add("open");
+}
+function closeConflictModal() {
+  const modal = document.getElementById("conflict-modal");
+  if (modal)
+    modal.classList.remove("open");
+  activeConflictedFile = null;
+}
+async function resolveConflict(resolution) {
+  if (!activeConflictedFile)
+    return;
+  try {
+    await tauriInvoke("resolve_conflict", { path: activeConflictedFile.path, resolution });
+    logActivity(`⚔️ Resolved conflict (${resolution})`, activeConflictedFile.path, "conflict");
+    closeConflictModal();
+    await refreshFilesList();
+    await refreshVaultStatus();
+  } catch (err) {
+    alert("Failed to resolve conflict: " + err);
+  }
+}
+async function openHistoryModal(file) {
+  const modal = document.getElementById("history-modal");
+  const title = document.getElementById("history-file-title");
+  const container = document.getElementById("history-list-container");
+  if (title)
+    title.textContent = file.path;
+  if (modal)
+    modal.classList.add("open");
+  if (container) {
+    container.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">Fetching journal history...</div>`;
+    try {
+      const revisions = await tauriInvoke("get_file_history", { path: file.path });
+      if (revisions.length === 0) {
+        container.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">No recorded journal revisions for this file.</div>`;
+        return;
+      }
+      container.innerHTML = revisions.map((rev) => `
+        <div style="background: #ffffff; border: 1px solid var(--border-light); border-radius: 6px; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-dark); display: flex; align-items: center; gap: 0.4rem;">
+              <span>${escapeHtml(rev.action)}</span>
+              ${rev.is_current ? '<span style="background: #e0f2fe; color: #0284c7; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;">CURRENT</span>' : ""}
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+              Device: <strong>${escapeHtml(rev.device_name)}</strong> • Lamport Seq: #${rev.lamport}
+            </div>
+            <div style="font-family: var(--font-mono); font-size: 0.68rem; color: #64748b; margin-top: 2px;">
+              SHA: ${escapeHtml(rev.hash.slice(0, 18))}...
+            </div>
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">
+            ${escapeHtml(rev.date_str)}
+          </div>
+        </div>
+      `).join("");
+    } catch (err) {
+      container.innerHTML = `<div style="color: #ef4444; padding: 1rem;">Failed to load history: ${err}</div>`;
+    }
+  }
+}
+function closeHistoryModal() {
+  const modal = document.getElementById("history-modal");
+  if (modal)
+    modal.classList.remove("open");
+}
+async function openSettingsModal() {
   const modal = document.getElementById("settings-modal");
   if (modal)
     modal.classList.add("open");
+  if (currentVaultStatus) {
+    const devInput = document.getElementById("cfg-device-name-input");
+    const bucketInput = document.getElementById("cfg-bucket-input");
+    const regionInput = document.getElementById("cfg-region-input");
+    const endpointInput = document.getElementById("cfg-endpoint-input");
+    const hubInput = document.getElementById("cfg-hub-input");
+    if (devInput && currentVaultStatus.device_name)
+      devInput.value = currentVaultStatus.device_name;
+    if (bucketInput && currentVaultStatus.bucket)
+      bucketInput.value = currentVaultStatus.bucket;
+    if (regionInput && currentVaultStatus.region)
+      regionInput.value = currentVaultStatus.region;
+    if (endpointInput)
+      endpointInput.value = currentVaultStatus.endpoint || "";
+    if (hubInput && currentVaultStatus.hub_url)
+      hubInput.value = currentVaultStatus.hub_url;
+  }
+  try {
+    const patterns = await tauriInvoke("get_ignored_patterns");
+    const ignoreInput = document.getElementById("cfg-ignored-patterns-input");
+    if (ignoreInput && patterns)
+      ignoreInput.value = patterns.join(`
+`);
+  } catch (_) {}
 }
 function closeSettingsModal() {
   const modal = document.getElementById("settings-modal");
   if (modal)
     modal.classList.remove("open");
 }
+async function handleSaveSettings() {
+  const devInput = document.getElementById("cfg-device-name-input");
+  const bucketInput = document.getElementById("cfg-bucket-input");
+  const regionInput = document.getElementById("cfg-region-input");
+  const endpointInput = document.getElementById("cfg-endpoint-input");
+  const hubInput = document.getElementById("cfg-hub-input");
+  const ignoreInput = document.getElementById("cfg-ignored-patterns-input");
+  try {
+    await tauriInvoke("update_vault_config", {
+      payload: {
+        device_name: devInput?.value.trim() || undefined,
+        bucket: bucketInput?.value.trim() || undefined,
+        region: regionInput?.value.trim() || undefined,
+        endpoint: endpointInput?.value.trim() || undefined,
+        hub_url: hubInput?.value.trim() || undefined
+      }
+    });
+    if (ignoreInput) {
+      const patterns = ignoreInput.value.split(`
+`).map((s) => s.trim()).filter(Boolean);
+      await tauriInvoke("save_ignored_patterns", { patterns });
+    }
+    logActivity("⚙️ Preferences updated", "Vault configuration and ignore rules saved", "system");
+    await refreshVaultStatus();
+    closeSettingsModal();
+  } catch (err) {
+    alert("Failed to save settings: " + err);
+  }
+}
+var contextMenuTargetFile = null;
+function showContextMenu(x, y, file) {
+  contextMenuTargetFile = file;
+  const menu = document.getElementById("context-menu");
+  if (!menu)
+    return;
+  const starLabel = document.getElementById("ctx-star-label");
+  if (starLabel) {
+    starLabel.textContent = starredPaths.has(file.path) ? "★ Unstar" : "⭐ Star";
+  }
+  const ctxConflict = document.getElementById("ctx-conflict");
+  if (ctxConflict) {
+    ctxConflict.style.display = file.status === "conflicted" ? "flex" : "none";
+  }
+  menu.style.left = `${Math.min(window.innerWidth - 220, x)}px`;
+  menu.style.top = `${Math.min(window.innerHeight - 300, y)}px`;
+  menu.style.display = "block";
+}
+function hideContextMenu() {
+  const menu = document.getElementById("context-menu");
+  if (menu)
+    menu.style.display = "none";
+  contextMenuTargetFile = null;
+}
 function initDesktopApp() {
-  console.log("[RenegadeBox] Initializing Dropbox-style desktop UI...");
+  console.log("[RenegadeBox] Initializing complete desktop UI...");
+  loadStarred();
   document.getElementById("sync-now-btn")?.addEventListener("click", (e) => {
     e.preventDefault();
     handleSyncNow();
+  });
+  document.getElementById("pause-sync-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    handleTogglePause();
   });
   document.getElementById("open-folder-btn")?.addEventListener("click", async (e) => {
     e.preventDefault();
@@ -584,12 +1123,7 @@ function initDesktopApp() {
     try {
       const imported = await tauriInvoke("pick_and_import_files");
       if (imported && imported.length > 0) {
-        const activityTitle = document.getElementById("activity-title");
-        const activityTime = document.getElementById("activity-time");
-        if (activityTitle)
-          activityTitle.textContent = `⚔️ Imported ${imported.length} file(s)`;
-        if (activityTime)
-          activityTime.textContent = `Sealing & encrypting into ~/RenegadeBox`;
+        logActivity(`⚔️ Imported ${imported.length} file(s)`, imported.join(", "), "upload");
         await refreshFilesList();
         await refreshVaultStatus();
       }
@@ -602,6 +1136,7 @@ function initDesktopApp() {
     try {
       const imported = await tauriInvoke("pick_and_import_files");
       if (imported && imported.length > 0) {
+        logActivity(`⚔️ Stashed ${imported.length} file(s)`, imported.join(", "), "upload");
         await refreshFilesList();
         await refreshVaultStatus();
       }
@@ -611,113 +1146,145 @@ function initDesktopApp() {
   });
   document.getElementById("new-folder-btn")?.addEventListener("click", async (e) => {
     e.preventDefault();
-    const folderName = prompt("Enter new folder name (e.g. Documents, Loot):");
-    if (folderName && folderName.trim()) {
+    const name = prompt("Enter new folder name (e.g. Loot, Documents):");
+    if (name && name.trim()) {
+      const folderPath = currentDirectory ? `${currentDirectory}/${name.trim()}` : name.trim();
       try {
-        await tauriInvoke("create_folder", { relativePath: folderName.trim() });
-        const activityTitle = document.getElementById("activity-title");
-        if (activityTitle)
-          activityTitle.textContent = `\uD83D\uDCC1 Created folder: ${folderName.trim()}`;
+        await tauriInvoke("create_folder", { relativePath: folderPath });
+        logActivity(`\uD83D\uDCC1 Created folder`, folderPath, "system");
         await refreshFilesList();
       } catch (err) {
         alert("Could not create folder: " + err);
       }
     }
   });
-  async function openCurrentFile() {
-    if (!selectedFile)
-      return;
-    try {
-      await tauriInvoke("open_file", { path: selectedFile.path });
-    } catch (err) {
-      console.warn("Could not open file directly, revealing folder:", err);
-      await tauriInvoke("open_sync_folder");
-    }
-  }
-  async function revealCurrentFile() {
-    if (!selectedFile)
-      return;
-    try {
-      await tauriInvoke("reveal_in_finder", { path: selectedFile.path });
-    } catch (err) {
-      console.warn("Could not reveal file directly, opening folder:", err);
-      await tauriInvoke("open_sync_folder");
-    }
-  }
   document.getElementById("inspector-open-file-btn")?.addEventListener("click", (e) => {
     e.preventDefault();
-    openCurrentFile();
+    if (selectedFile)
+      tauriInvoke("open_file", { path: selectedFile.path });
   });
   document.getElementById("inspector-open-external")?.addEventListener("click", (e) => {
     e.preventDefault();
-    openCurrentFile();
+    if (selectedFile)
+      tauriInvoke("open_file", { path: selectedFile.path });
   });
   document.getElementById("inspector-reveal-btn")?.addEventListener("click", (e) => {
     e.preventDefault();
-    revealCurrentFile();
+    if (selectedFile)
+      tauriInvoke("reveal_in_finder", { path: selectedFile.path });
   });
   document.getElementById("action-reveal-btn")?.addEventListener("click", (e) => {
     e.preventDefault();
-    revealCurrentFile();
+    if (selectedFile)
+      tauriInvoke("reveal_in_finder", { path: selectedFile.path });
   });
-  document.getElementById("inspector-delete-btn")?.addEventListener("click", async (e) => {
+  document.getElementById("inspector-rename-btn")?.addEventListener("click", (e) => {
     e.preventDefault();
-    if (!selectedFile)
-      return;
-    const confirmDel = confirm(`Move "${selectedFile.path}" to macOS Trash?
-
-This will also remove it from your S3 vault.`);
-    if (confirmDel) {
-      try {
-        await tauriInvoke("delete_file", { path: selectedFile.path });
-        const activityTitle = document.getElementById("activity-title");
-        const activityTime = document.getElementById("activity-time");
-        if (activityTitle)
-          activityTitle.textContent = `\uD83D\uDDD1️ Moved to trash: ${selectedFile.path}`;
-        if (activityTime)
-          activityTime.textContent = "Syncing deletion with S3 vault";
-        selectedFile = null;
-        await refreshFilesList();
-        await refreshVaultStatus();
-      } catch (err) {
-        alert("Failed to delete file: " + err);
-      }
+    if (selectedFile)
+      handleRenameFile(selectedFile);
+  });
+  document.getElementById("inspector-delete-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (selectedFile)
+      handleDeleteFile(selectedFile);
+  });
+  document.getElementById("inspector-star-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (selectedFile)
+      toggleStar(selectedFile.path);
+  });
+  document.getElementById("inspector-export-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (selectedFile)
+      handleExportCopy(selectedFile);
+  });
+  document.getElementById("inspector-conflict-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (selectedFile)
+      openConflictModal(selectedFile);
+  });
+  document.getElementById("action-history-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (selectedFile)
+      openHistoryModal(selectedFile);
+  });
+  document.getElementById("action-link-btn")?.addEventListener("click", () => {
+    if (selectedFile) {
+      navigator.clipboard?.writeText(selectedFile.path);
+      logActivity("Copied path", selectedFile.path, "system");
     }
   });
   document.getElementById("action-copy-blob-btn")?.addEventListener("click", () => {
     if (selectedFile?.blob_id) {
       navigator.clipboard?.writeText(selectedFile.blob_id);
-      const activityTitle = document.getElementById("activity-title");
-      if (activityTitle)
-        activityTitle.textContent = `Copied S3 Blob ID: ${selectedFile.blob_id.slice(0, 16)}...`;
+      logActivity("Copied S3 Blob ID", selectedFile.blob_id, "system");
     }
+  });
+  const setupSortHeader = (id, key) => {
+    document.getElementById(id)?.addEventListener("click", () => {
+      if (currentSortKey === key) {
+        currentSortAsc = !currentSortAsc;
+      } else {
+        currentSortKey = key;
+        currentSortAsc = true;
+      }
+      ["name", "type", "size", "status"].forEach((k) => {
+        const icon = document.getElementById(`sort-${k}-icon`);
+        if (icon) {
+          icon.textContent = k === currentSortKey ? currentSortAsc ? "▲" : "▼" : "";
+        }
+      });
+      renderActiveViews();
+    });
+  };
+  setupSortHeader("th-name", "name");
+  setupSortHeader("th-type", "type");
+  setupSortHeader("th-size", "size");
+  setupSortHeader("th-status", "status");
+  document.getElementById("view-list-btn")?.addEventListener("click", () => {
+    currentViewMode = "list";
+    document.getElementById("view-list-btn")?.classList.add("active");
+    document.getElementById("view-grid-btn")?.classList.remove("active");
+    renderActiveViews();
+  });
+  document.getElementById("view-grid-btn")?.addEventListener("click", () => {
+    currentViewMode = "grid";
+    document.getElementById("view-grid-btn")?.classList.add("active");
+    document.getElementById("view-list-btn")?.classList.remove("active");
+    renderActiveViews();
+  });
+  document.querySelectorAll(".filter-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      document.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
+      chip.classList.add("active");
+      currentFilter = chip.getAttribute("data-filter") || "all";
+      renderActiveViews();
+    });
   });
   document.getElementById("nav-all-files")?.addEventListener("click", () => {
     document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
     document.getElementById("nav-all-files")?.classList.add("active");
-    renderFileTable(allFiles);
+    activeNav = "files";
+    currentDirectory = "";
+    const title = document.getElementById("view-title");
+    if (title)
+      title.textContent = "RenegadeBox";
+    renderActiveViews();
   });
   document.getElementById("nav-starred")?.addEventListener("click", () => {
     document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
     document.getElementById("nav-starred")?.classList.add("active");
-    renderFileTable(allFiles.slice(0, 2));
+    activeNav = "starred";
+    const title = document.getElementById("view-title");
+    if (title)
+      title.textContent = "Starred Files";
+    renderActiveViews();
   });
   document.getElementById("nav-activity")?.addEventListener("click", () => {
     document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
     document.getElementById("nav-activity")?.classList.add("active");
-    const activityTitle = document.getElementById("activity-title");
-    const activityTime = document.getElementById("activity-time");
-    if (activityTitle)
-      activityTitle.textContent = "Captain's Log: Live Watcher Active";
-    if (activityTime)
-      activityTime.textContent = `Connected to s3://${currentVaultStatus?.bucket || "vault"}`;
-  });
-  document.querySelectorAll(".folder-item").forEach((f) => {
-    f.addEventListener("click", () => {
-      const folderName = f.querySelector("span")?.textContent?.trim().toLowerCase() || "";
-      const filtered = allFiles.filter((file) => file.path.toLowerCase().includes(folderName));
-      renderFileTable(filtered.length > 0 ? filtered : allFiles);
-    });
+    activeNav = "activity";
+    renderActiveViews();
   });
   document.getElementById("nav-settings")?.addEventListener("click", openSettingsModal);
   document.getElementById("user-profile-btn")?.addEventListener("click", openSettingsModal);
@@ -725,29 +1292,102 @@ This will also remove it from your S3 vault.`);
     e.preventDefault();
     openSettingsModal();
   });
-  document.getElementById("close-modal-btn")?.addEventListener("click", closeSettingsModal);
-  document.getElementById("modal-done-btn")?.addEventListener("click", closeSettingsModal);
-  document.getElementById("modal-dashboard-btn")?.addEventListener("click", async () => {
-    try {
-      await tauriInvoke("open_dashboard");
-    } catch (err) {
-      console.error("Open dashboard error:", err);
+  document.getElementById("nav-back-btn")?.addEventListener("click", () => {
+    if (navHistoryIndex > 0) {
+      navHistoryIndex -= 1;
+      currentDirectory = navHistory[navHistoryIndex];
+      renderActiveViews();
     }
   });
-  document.getElementById("action-link-btn")?.addEventListener("click", () => {
-    if (selectedFile) {
-      navigator.clipboard?.writeText(selectedFile.path);
-      const activityTitle = document.getElementById("activity-title");
-      if (activityTitle)
-        activityTitle.textContent = `Copied path: ${selectedFile.path}`;
+  document.getElementById("nav-forward-btn")?.addEventListener("click", () => {
+    if (navHistoryIndex < navHistory.length - 1) {
+      navHistoryIndex += 1;
+      currentDirectory = navHistory[navHistoryIndex];
+      renderActiveViews();
+    }
+  });
+  document.getElementById("close-conflict-modal-btn")?.addEventListener("click", closeConflictModal);
+  document.getElementById("cancel-conflict-btn")?.addEventListener("click", closeConflictModal);
+  document.getElementById("resolve-keep-local-btn")?.addEventListener("click", () => resolveConflict("keep_local"));
+  document.getElementById("resolve-keep-conflicted-btn")?.addEventListener("click", () => resolveConflict("keep_conflicted"));
+  document.getElementById("resolve-keep-both-btn")?.addEventListener("click", () => resolveConflict("keep_both"));
+  document.getElementById("close-history-modal-btn")?.addEventListener("click", closeHistoryModal);
+  document.getElementById("done-history-modal-btn")?.addEventListener("click", closeHistoryModal);
+  document.getElementById("close-modal-btn")?.addEventListener("click", closeSettingsModal);
+  document.getElementById("modal-done-btn")?.addEventListener("click", closeSettingsModal);
+  document.getElementById("save-settings-btn")?.addEventListener("click", handleSaveSettings);
+  document.getElementById("modal-dashboard-btn")?.addEventListener("click", () => tauriInvoke("open_dashboard"));
+  document.getElementById("ctx-open")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      tauriInvoke("open_file", { path: contextMenuTargetFile.path });
+    hideContextMenu();
+  });
+  document.getElementById("ctx-reveal")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      tauriInvoke("reveal_in_finder", { path: contextMenuTargetFile.path });
+    hideContextMenu();
+  });
+  document.getElementById("ctx-rename")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      handleRenameFile(contextMenuTargetFile);
+    hideContextMenu();
+  });
+  document.getElementById("ctx-star")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      toggleStar(contextMenuTargetFile.path);
+    hideContextMenu();
+  });
+  document.getElementById("ctx-history")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      openHistoryModal(contextMenuTargetFile);
+    hideContextMenu();
+  });
+  document.getElementById("ctx-conflict")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      openConflictModal(contextMenuTargetFile);
+    hideContextMenu();
+  });
+  document.getElementById("ctx-export")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      handleExportCopy(contextMenuTargetFile);
+    hideContextMenu();
+  });
+  document.getElementById("ctx-copy-path")?.addEventListener("click", () => {
+    if (contextMenuTargetFile) {
+      navigator.clipboard?.writeText(contextMenuTargetFile.path);
+      logActivity("Copied path", contextMenuTargetFile.path, "system");
+    }
+    hideContextMenu();
+  });
+  document.getElementById("ctx-copy-blob")?.addEventListener("click", () => {
+    if (contextMenuTargetFile?.blob_id) {
+      navigator.clipboard?.writeText(contextMenuTargetFile.blob_id);
+      logActivity("Copied blob ID", contextMenuTargetFile.blob_id, "system");
+    }
+    hideContextMenu();
+  });
+  document.getElementById("ctx-delete")?.addEventListener("click", () => {
+    if (contextMenuTargetFile)
+      handleDeleteFile(contextMenuTargetFile);
+    hideContextMenu();
+  });
+  window.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!target.closest("#context-menu"))
+      hideContextMenu();
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      hideContextMenu();
+      closeSettingsModal();
+      closeConflictModal();
+      closeHistoryModal();
     }
   });
   const searchInput = document.getElementById("search-input");
   if (searchInput) {
     searchInput.addEventListener("input", () => {
-      const q = searchInput.value.toLowerCase().trim();
-      const filtered = allFiles.filter((f) => f.path.toLowerCase().includes(q));
-      renderFileTable(filtered);
+      renderActiveViews();
     });
   }
   refreshVaultStatus();
@@ -769,7 +1409,7 @@ async function setupAutoSyncEvents() {
       await refreshFilesList();
     });
     await listen2("sync-started", () => {
-      console.log("[Tauri Event] sync-started received");
+      logActivity("⚔️ Hoisting booty to S3...", "Sync cycle started: encrypting and uploading", "upload");
       const activityTitle = document.getElementById("activity-title");
       const activityTime = document.getElementById("activity-time");
       if (activityTitle)
@@ -778,19 +1418,18 @@ async function setupAutoSyncEvents() {
         activityTime.textContent = "Encrypting & synchronizing with S3 pirate vault";
     });
     await listen2("sync-finished", async (event) => {
-      console.log("[Tauri Event] sync-finished received:", event.payload);
-      const activityTitle = document.getElementById("activity-title");
-      const activityTime = document.getElementById("activity-time");
-      if (activityTitle) {
-        activityTitle.textContent = event.payload.success ? "⚓ All booty stashed & synced" : "⚠️ Storm warning";
-      }
-      if (activityTime) {
-        activityTime.textContent = event.payload.message;
-      }
+      logActivity(event.payload.success ? "⚓ Booty stashed & synced" : "⚠️ Storm warning", event.payload.message, event.payload.success ? "system" : "conflict");
       await refreshVaultStatus();
       await refreshFilesList();
     });
-    console.log("[RenegadeBox] Auto-sync event listeners registered.");
+    await listen2("sync-paused", () => {
+      updatePauseUI(true);
+      logActivity("⏸ Sync paused", "Background automatic synchronization suspended", "system");
+    });
+    await listen2("sync-resumed", () => {
+      updatePauseUI(false);
+      logActivity("▶ Sync resumed", "Background file watcher and automatic S3 sync enabled", "system");
+    });
   } catch (err) {
     console.warn("[RenegadeBox] Could not attach auto-sync event listeners:", err);
   }
@@ -801,15 +1440,35 @@ if (document.readyState === "loading") {
   initDesktopApp();
 }
 export {
+  toggleStar,
   tauriInvoke,
+  showContextMenu,
   selectFile,
+  resolveConflict,
   renderFileTable,
+  renderFileGrid,
+  renderBreadcrumbs,
+  renderActivityFeed,
+  renderActiveViews,
   refreshVaultStatus,
   refreshFilesList,
   openSettingsModal,
+  openHistoryModal,
+  openConflictModal,
+  logActivity,
   initDesktopApp,
+  hideContextMenu,
+  handleTogglePause,
   handleSyncNow,
+  handleSaveSettings,
+  handleRenameFile,
+  handleExportCopy,
+  handleDeleteFile,
+  getFilteredAndSortedFiles,
   formatBytes,
   escapeHtml,
-  closeSettingsModal
+  enterDirectory,
+  closeSettingsModal,
+  closeHistoryModal,
+  closeConflictModal
 };

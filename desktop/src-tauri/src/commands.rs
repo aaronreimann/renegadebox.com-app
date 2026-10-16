@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State as TauriState};
 
@@ -49,11 +51,13 @@ pub enum SyncRequest {
 #[derive(Clone)]
 pub struct WatcherHandle {
     pub tx: tokio::sync::mpsc::UnboundedSender<SyncRequest>,
+    pub paused: Arc<AtomicBool>,
 }
 
 pub async fn run_background_watcher(
     app: AppHandle,
     mut rx: tokio::sync::mpsc::UnboundedReceiver<SyncRequest>,
+    paused: Arc<AtomicBool>,
 ) {
     loop {
         let profile = match Profile::locate() {
@@ -121,6 +125,12 @@ pub async fn run_background_watcher(
                         }
                     }
                 }
+            }
+
+            let is_paused = paused.load(Ordering::SeqCst);
+            if is_paused && manual_reply.is_none() {
+                // When paused, skip auto-sync on timer/FSEvents unless user explicitly clicked Sync Now
+                continue;
             }
 
             let _ = app.emit("sync-started", ());
@@ -246,6 +256,26 @@ pub async fn trigger_sync(state: TauriState<'_, WatcherHandle>) -> Result<SyncRe
         Ok(Err(_)) => Err("Watcher channel closed without response".to_string()),
         Err(_) => Err("Sync timed out after 30 seconds".to_string()),
     }
+}
+
+#[tauri::command]
+pub fn pause_sync(app: AppHandle, state: TauriState<'_, WatcherHandle>) -> Result<bool, String> {
+    state.paused.store(true, Ordering::SeqCst);
+    let _ = app.emit("sync-paused", ());
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn resume_sync(app: AppHandle, state: TauriState<'_, WatcherHandle>) -> Result<bool, String> {
+    state.paused.store(false, Ordering::SeqCst);
+    let _ = app.emit("sync-resumed", ());
+    let _ = state.tx.send(SyncRequest::Trigger(None));
+    Ok(false)
+}
+
+#[tauri::command]
+pub fn is_sync_paused(state: TauriState<'_, WatcherHandle>) -> Result<bool, String> {
+    Ok(state.paused.load(Ordering::SeqCst))
 }
 
 #[tauri::command]
@@ -537,4 +567,250 @@ pub fn open_dashboard() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let src = cfg.folder.join(old_path.trim_start_matches('/'));
+    let dst = cfg.folder.join(new_path.trim_start_matches('/'));
+
+    if !src.exists() {
+        return Err(format!("Source file does not exist: {}", src.display()));
+    }
+    if dst.exists() {
+        return Err(format!("A file or folder named '{}' already exists", new_path));
+    }
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {e}"))?;
+    }
+    std::fs::rename(&src, &dst).map_err(|e| format!("Failed to rename file: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resolve_conflict(path: String, resolution: String) -> Result<(), String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let conflicted_target = cfg.folder.join(path.trim_start_matches('/'));
+
+    if !conflicted_target.exists() {
+        return Err(format!("Conflicted file does not exist: {}", conflicted_target.display()));
+    }
+
+    match resolution.as_str() {
+        "keep_local" => {
+            // Delete the conflicted copy
+            if conflicted_target.is_dir() {
+                std::fs::remove_dir_all(&conflicted_target).map_err(|e| format!("Failed to delete conflicted folder: {e}"))?;
+            } else {
+                std::fs::remove_file(&conflicted_target).map_err(|e| format!("Failed to delete conflicted file: {e}"))?;
+            }
+        }
+        "keep_conflicted" => {
+            // Identify original base file name and overwrite
+            let file_name = conflicted_target.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let parent = conflicted_target.parent().unwrap_or(&cfg.folder);
+            
+            let base_name = if let Some(idx) = file_name.find(" (conflicted copy") {
+                let ext = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+                format!("{}{ext}", &file_name[..idx])
+            } else {
+                file_name.replace("conflicted", "resolved")
+            };
+            let base_target = parent.join(&base_name);
+            
+            std::fs::copy(&conflicted_target, &base_target).map_err(|e| format!("Failed to copy conflicted version over base: {e}"))?;
+            let _ = std::fs::remove_file(&conflicted_target);
+        }
+        "keep_both" => {
+            // Rename conflicted file to a clean archive name
+            let file_name = conflicted_target.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let parent = conflicted_target.parent().unwrap_or(&cfg.folder);
+            let ext = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
+            let clean_name = if let Some(idx) = file_name.find(" (conflicted copy") {
+                format!("{} (archived copy){ext}", &file_name[..idx])
+            } else {
+                format!("{} (copy){ext}", file_name.trim_end_matches(&ext))
+            };
+            let new_target = parent.join(&clean_name);
+            std::fs::rename(&conflicted_target, &new_target).map_err(|e| format!("Failed to archive conflicted file: {e}"))?;
+        }
+        other => return Err(format!("Unknown resolution strategy: {other}")),
+    }
+
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FileRevision {
+    pub timestamp_ms: i64,
+    pub date_str: String,
+    pub device_name: String,
+    pub lamport: u64,
+    pub size: u64,
+    pub hash: String,
+    pub blob_id: Option<String>,
+    pub action: String,
+    pub is_current: bool,
+}
+
+#[tauri::command]
+pub async fn get_file_history(path: String) -> Result<Vec<FileRevision>, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let mut revisions = Vec::new();
+
+    if profile.state_path().exists() {
+        if let Ok(state) = State::open(&profile.state_path()) {
+            if let Ok(Some(row)) = state.get(&path) {
+                let mtime_ms = row.local_mtime_ns.unwrap_or(0) / 1_000_000;
+                let date_str = if mtime_ms > 0 {
+                    chrono::DateTime::from_timestamp_millis(mtime_ms)
+                        .map(|dt| dt.format("%b %d, %Y %H:%M:%S UTC").to_string())
+                        .unwrap_or_else(|| "Recent".to_string())
+                } else {
+                    "Current version".to_string()
+                };
+
+                let hash = row.local_hash.or(row.synced_hash).unwrap_or_default();
+                revisions.push(FileRevision {
+                    timestamp_ms: mtime_ms,
+                    date_str,
+                    device_name: if row.head_device.is_empty() { "Current Device".to_string() } else { row.head_device },
+                    lamport: row.head_lamport,
+                    size: row.local_size.unwrap_or(0),
+                    hash,
+                    blob_id: row.blob_id,
+                    action: "Current Head".to_string(),
+                    is_current: true,
+                });
+            }
+        }
+    }
+
+    // Try reading S3 journal entries to reconstruct full history if S3 accessible
+    if let Ok(cfg) = profile.load() {
+        if let Ok(secret) = profile.get_secret(&cfg, renegadebox_engine::config::SECRET_S3) {
+            let storage = renegadebox_engine::engine::storage_for(&cfg, &secret);
+            if let Ok(keys) = storage.list_keys("rb/journal/", None).await {
+                for k in keys.iter().rev().take(15) {
+                    if let Some((device, seq)) = renegadebox_engine::journal::parse_journal_key(k) {
+                        if revisions.iter().all(|r| r.lamport != seq) {
+                            revisions.push(FileRevision {
+                                timestamp_ms: (seq as i64) * 1000,
+                                date_str: format!("Journal Seq #{seq}"),
+                                device_name: format!("Device {}", &device[..8]),
+                                lamport: seq,
+                                size: 0,
+                                hash: format!("journal/{seq:06}"),
+                                blob_id: None,
+                                action: "Journal Commit".to_string(),
+                                is_current: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(revisions)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UpdateConfigPayload {
+    pub device_name: Option<String>,
+    pub bucket: Option<String>,
+    pub region: Option<String>,
+    pub endpoint: Option<String>,
+    pub hub_url: Option<String>,
+}
+
+#[tauri::command]
+pub fn update_vault_config(payload: UpdateConfigPayload) -> Result<(), String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let mut cfg = profile.load().map_err(|e| e.to_string())?;
+
+    if let Some(dn) = payload.device_name {
+        if !dn.trim().is_empty() {
+            renegadebox_engine::config::validate_device_name(&dn).map_err(|e| e.to_string())?;
+            cfg.device_name = dn.trim().to_string();
+        }
+    }
+    if let Some(b) = payload.bucket {
+        if !b.trim().is_empty() {
+            cfg.bucket = b.trim().to_string();
+        }
+    }
+    if let Some(r) = payload.region {
+        if !r.trim().is_empty() {
+            cfg.region = r.trim().to_string();
+        }
+    }
+    if let Some(ep) = payload.endpoint {
+        cfg.endpoint = if ep.trim().is_empty() { None } else { Some(ep.trim().to_string()) };
+    }
+    if let Some(h) = payload.hub_url {
+        cfg.hub_url = if h.trim().is_empty() { None } else { Some(h.trim().to_string()) };
+    }
+
+    profile.save(&cfg).map_err(|e| format!("Failed to save config: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_ignored_patterns() -> Result<Vec<String>, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let ignore_file = cfg.folder.join(".rboxignore");
+
+    if !ignore_file.exists() {
+        return Ok(vec![
+            ".DS_Store".to_string(),
+            "Thumbs.db".to_string(),
+            "*.tmp".to_string(),
+            ".git/".to_string(),
+            "node_modules/".to_string(),
+        ]);
+    }
+
+    let content = std::fs::read_to_string(&ignore_file).map_err(|e| e.to_string())?;
+    let patterns = content
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+
+    Ok(patterns)
+}
+
+#[tauri::command]
+pub fn save_ignored_patterns(patterns: Vec<String>) -> Result<(), String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let ignore_file = cfg.folder.join(".rboxignore");
+
+    let content = patterns.join("\n") + "\n";
+    std::fs::write(&ignore_file, content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn export_file_copy(path: String) -> Result<String, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let src = cfg.folder.join(path.trim_start_matches('/'));
+
+    if !src.exists() {
+        return Err(format!("File does not exist: {}", src.display()));
+    }
+
+    let file_name = src.file_name().ok_or_else(|| "Invalid file name".to_string())?;
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let downloads_dir = std::path::PathBuf::from(home).join("Downloads");
+    let dst = downloads_dir.join(file_name);
+
+    std::fs::copy(&src, &dst).map_err(|e| format!("Failed to export copy: {e}"))?;
+    Ok(dst.to_string_lossy().to_string())
 }
