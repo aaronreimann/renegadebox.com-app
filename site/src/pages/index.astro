@@ -312,6 +312,385 @@ import Layout from "../layouts/Layout.astro";
     </div>
   </section>
 
+  <!-- Cloud Storage Setup Wizard -->
+  <section id="wizard" style="padding: 6rem 0; border-top: 1px solid var(--border-subtle); position: relative;">
+    <div class="container">
+      <div style="text-align: center; max-width: 720px; margin: 0 auto 3.5rem auto;">
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.1); border: 1px solid var(--border-cyan); color: #7dd3fc; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+          Bring Your Own Storage (BYOS)
+        </div>
+        <h2 style="font-size: 2.25rem; margin-bottom: 0.75rem;">Interactive S3 Provider Setup Wizard</h2>
+        <p style="color: var(--text-secondary); font-size: 1rem;">
+          Select your storage provider below. RenegadeBox automatically generates the exact minimal IAM policy and CLI command to connect your vault in seconds.
+        </p>
+      </div>
+
+      <div class="glass-card" style="padding: 2.5rem; max-width: 960px; margin: 0 auto;">
+        <!-- Provider Buttons -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 2rem;">
+          <button
+            type="button"
+            id="provider-btn-r2"
+            class="wizard-provider-btn"
+            style="background: rgba(56, 189, 248, 0.15); border: 1px solid var(--accent-cyan); color: #7dd3fc; padding: 1rem; border-radius: 0.5rem; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 0.25rem;"
+          >
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-weight: 700; font-size: 0.95rem;">Cloudflare R2</span>
+              <span style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 0.25rem;">$0 Egress</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Recommended for high bandwidth</span>
+          </button>
+
+          <button
+            type="button"
+            id="provider-btn-s3"
+            class="wizard-provider-btn"
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 1rem; border-radius: 0.5rem; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 0.25rem;"
+          >
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-weight: 700; font-size: 0.95rem;">AWS S3</span>
+              <span style="background: rgba(255, 255, 255, 0.1); color: #e2e8f0; font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 0.25rem;">Standard</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Standard corporate cloud</span>
+          </button>
+
+          <button
+            type="button"
+            id="provider-btn-b2"
+            class="wizard-provider-btn"
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 1rem; border-radius: 0.5rem; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 0.25rem;"
+          >
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-weight: 700; font-size: 0.95rem;">Backblaze B2</span>
+              <span style="background: rgba(168, 85, 247, 0.2); color: #d8b4fe; font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 0.25rem;">$0.006/GB</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Lowest raw storage price</span>
+          </button>
+
+          <button
+            type="button"
+            id="provider-btn-local"
+            class="wizard-provider-btn"
+            style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 1rem; border-radius: 0.5rem; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 0.25rem;"
+          >
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-weight: 700; font-size: 0.95rem;">MinIO / Seaweed</span>
+              <span style="background: rgba(245, 158, 11, 0.2); color: #fde68a; font-size: 0.7rem; padding: 0.15rem 0.4rem; border-radius: 0.25rem;">Self-Hosted</span>
+            </div>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">100% On-Premise NAS</span>
+          </button>
+        </div>
+
+        <!-- Input Parameters Form -->
+        <div style="background: #090e18; border: 1px solid var(--border-subtle); border-radius: 0.625rem; padding: 1.5rem; margin-bottom: 2rem;">
+          <div style="font-size: 0.875rem; font-weight: 700; color: #f8fafc; margin-bottom: 1.25rem; text-transform: uppercase; letter-spacing: 0.05em;">
+            Bucket &amp; Region Configuration
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem;">
+            <div>
+              <label for="wizard-bucket-input" style="display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                Bucket Name
+              </label>
+              <input
+                type="text"
+                id="wizard-bucket-input"
+                value="my-renegade-vault"
+                style="width: 100%; background: #060910; border: 1px solid var(--border-subtle); color: #f8fafc; padding: 0.625rem 0.875rem; border-radius: 0.375rem; font-family: var(--font-mono); font-size: 0.875rem; outline: none;"
+              />
+            </div>
+
+            <div>
+              <label for="wizard-region-input" style="display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                Region
+              </label>
+              <input
+                type="text"
+                id="wizard-region-input"
+                value="auto"
+                style="width: 100%; background: #060910; border: 1px solid var(--border-subtle); color: #f8fafc; padding: 0.625rem 0.875rem; border-radius: 0.375rem; font-family: var(--font-mono); font-size: 0.875rem; outline: none;"
+              />
+            </div>
+
+            <div style="grid-column: 1 / -1;" id="wizard-endpoint-row">
+              <label for="wizard-endpoint-input" style="display: block; font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                S3 Endpoint URL <span style="color: var(--text-muted);">(Required for Cloudflare R2 / MinIO / SeaweedFS)</span>
+              </label>
+              <input
+                type="text"
+                id="wizard-endpoint-input"
+                value="https://<account_id>.r2.cloudflarestorage.com"
+                style="width: 100%; background: #060910; border: 1px solid var(--border-subtle); color: #f8fafc; padding: 0.625rem 0.875rem; border-radius: 0.375rem; font-family: var(--font-mono); font-size: 0.875rem; outline: none;"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Wizard Outputs: CLI Command & Minimal IAM Policy -->
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+          <!-- CLI Command Output Box -->
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-size: 0.8125rem; font-weight: 700; color: #7dd3fc; text-transform: uppercase; letter-spacing: 0.05em;">
+                Step 1: Initialize Vault with CLI
+              </span>
+              <button
+                type="button"
+                id="wizard-copy-cmd-btn"
+                style="background: rgba(56, 189, 248, 0.15); border: 1px solid var(--accent-cyan); color: #7dd3fc; border-radius: 0.25rem; padding: 0.25rem 0.625rem; font-size: 0.75rem; cursor: pointer;"
+              >
+                Copy Command
+              </button>
+            </div>
+            <pre id="wizard-cmd-box" style="background: #05080f; border: 1px solid var(--border-subtle); border-radius: 0.5rem; padding: 1rem; font-family: var(--font-mono); font-size: 0.8125rem; color: #f1f5f9; overflow-x: auto; white-space: pre-wrap; line-height: 1.5;"></pre>
+          </div>
+
+          <!-- Minimal IAM Policy Output Box -->
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+              <span style="font-size: 0.8125rem; font-weight: 700; color: #6ee7b7; text-transform: uppercase; letter-spacing: 0.05em;">
+                Step 2: Minimal Zero-Trust IAM Policy (Copy to Cloud Console)
+              </span>
+              <button
+                type="button"
+                id="wizard-copy-iam-btn"
+                style="background: rgba(16, 185, 129, 0.15); border: 1px solid var(--accent-emerald); color: #6ee7b7; border-radius: 0.25rem; padding: 0.25rem 0.625rem; font-size: 0.75rem; cursor: pointer;"
+              >
+                Copy Policy JSON
+              </button>
+            </div>
+            <pre id="wizard-iam-box" style="background: #05080f; border: 1px solid var(--border-subtle); border-radius: 0.5rem; padding: 1rem; font-family: var(--font-mono); font-size: 0.775rem; color: #e2e8f0; overflow-x: auto; max-height: 220px; line-height: 1.45;"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Storage Cost Calculator & ROI -->
+  <section id="comparison" style="padding: 6rem 0; border-top: 1px solid var(--border-subtle); background: rgba(13, 17, 28, 0.3);">
+    <div class="container">
+      <div style="text-align: center; max-width: 720px; margin: 0 auto 3.5rem auto;">
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(168, 85, 247, 0.1); border: 1px solid var(--border-purple); color: #d8b4fe; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+          Economics &amp; Independence
+        </div>
+        <h2 style="font-size: 2.25rem; margin-bottom: 0.75rem;">Stop Paying a 500% SaaS Markup</h2>
+        <p style="color: var(--text-secondary); font-size: 1rem;">
+          Dropbox and Google Drive charge massive markups on commodity cloud storage. With RenegadeBox, you pay raw wholesale rates directly to the storage provider.
+        </p>
+      </div>
+
+      <!-- Interactive Cost Slider Card -->
+      <div class="glass-card" style="padding: 2.5rem; max-width: 900px; margin: 0 auto 3.5rem auto;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+          <span style="font-size: 1rem; font-weight: 700; color: #f8fafc;">Your Storage Footprint:</span>
+          <span id="slider-size-label" style="font-size: 1.35rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-heading);">
+            1,000 GB (1.0 TB)
+          </span>
+        </div>
+
+        <input
+          type="range"
+          id="storage-slider"
+          min="100"
+          max="10000"
+          step="100"
+          value="1000"
+          style="width: 100%; accent-color: #38bdf8; height: 8px; border-radius: 4px; cursor: pointer; margin-bottom: 1.5rem;"
+        />
+
+        <div style="display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2.5rem; flex-wrap: wrap;">
+          <button type="button" class="preset-btn" data-size="250" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">250 GB</button>
+          <button type="button" class="preset-btn" data-size="1000" style="background: rgba(56, 189, 248, 0.2); border: 1px solid var(--accent-cyan); color: #7dd3fc; padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">1 TB</button>
+          <button type="button" class="preset-btn" data-size="2000" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">2 TB</button>
+          <button type="button" class="preset-btn" data-size="5000" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">5 TB</button>
+          <button type="button" class="preset-btn" data-size="10000" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 0.35rem 0.85rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">10 TB</button>
+        </div>
+
+        <!-- 3-Column Cost Comparison Breakdown -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+          <!-- Dropbox Card -->
+          <div style="background: #090e18; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.625rem; padding: 1.25rem; text-align: center;">
+            <div style="font-size: 0.75rem; font-weight: 700; color: #f87171; text-transform: uppercase; margin-bottom: 0.25rem;">Proprietary Cloud</div>
+            <div style="font-size: 1.1rem; font-weight: 800; color: #ffffff; margin-bottom: 0.5rem;">Dropbox Plus / Pro</div>
+            <div id="cost-dropbox" style="font-size: 1.85rem; font-weight: 900; color: #ef4444; font-family: var(--font-heading); margin-bottom: 0.25rem;">
+              $11.99
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">per month ($144 / yr)</div>
+            <div style="margin-top: 0.75rem; font-size: 0.75rem; color: #fca5a5;">Includes closed-source indexing &amp; AI training scans</div>
+          </div>
+
+          <!-- Cloudflare R2 Card -->
+          <div style="background: #090e18; border: 2px solid var(--accent-cyan); border-radius: 0.625rem; padding: 1.25rem; text-align: center; position: relative; box-shadow: 0 0 25px rgba(56, 189, 248, 0.15);">
+            <div style="position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: #0284c7; color: #ffffff; font-size: 0.65rem; font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 9999px; text-transform: uppercase;">
+              Best Bandwidth Value
+            </div>
+            <div style="font-size: 0.75rem; font-weight: 700; color: #7dd3fc; text-transform: uppercase; margin-bottom: 0.25rem;">RenegadeBox +</div>
+            <div style="font-size: 1.1rem; font-weight: 800; color: #ffffff; margin-bottom: 0.5rem;">Cloudflare R2</div>
+            <div id="cost-r2" style="font-size: 1.85rem; font-weight: 900; color: #38bdf8; font-family: var(--font-heading); margin-bottom: 0.25rem;">
+              $15.00
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">per month ($0 egress fee)</div>
+            <div style="margin-top: 0.75rem; font-size: 0.75rem; color: #7dd3fc;">Client-side AES-256-GCM encrypted</div>
+          </div>
+
+          <!-- Backblaze B2 Card -->
+          <div style="background: #090e18; border: 1px solid var(--border-emerald); border-radius: 0.625rem; padding: 1.25rem; text-align: center;">
+            <div style="font-size: 0.75rem; font-weight: 700; color: #6ee7b7; text-transform: uppercase; margin-bottom: 0.25rem;">RenegadeBox +</div>
+            <div style="font-size: 1.1rem; font-weight: 800; color: #ffffff; margin-bottom: 0.5rem;">Backblaze B2</div>
+            <div id="cost-b2" style="font-size: 1.85rem; font-weight: 900; color: #10b981; font-family: var(--font-heading); margin-bottom: 0.25rem;">
+              $6.00
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">per month ($72 / yr)</div>
+            <div style="margin-top: 0.75rem; font-size: 0.75rem; color: #6ee7b7;">Lowest raw storage rate ($0.006/GB)</div>
+          </div>
+        </div>
+
+        <!-- Savings Callout Banner -->
+        <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid var(--border-emerald); border-radius: 0.5rem; padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span style="font-size: 1.5rem;">💰</span>
+            <div>
+              <div style="font-weight: 700; font-size: 0.95rem; color: #6ee7b7;" id="savings-headline">
+                Save $72.00 every year with Backblaze B2
+              </div>
+              <div style="font-size: 0.8125rem; color: var(--text-secondary);">
+                Plus, eliminate proprietary lock-in. Your files stay accessible with standard AWS S3 tooling anytime.
+              </div>
+            </div>
+          </div>
+          <a href="#wizard" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8125rem;">
+            Configure Provider →
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature Comparison Table -->
+      <div style="max-width: 900px; margin: 0 auto; overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">
+              <th style="padding: 1rem 1rem 1rem 0;">Feature</th>
+              <th style="padding: 1rem; color: #38bdf8; font-weight: 700;">RenegadeBox</th>
+              <th style="padding: 1rem;">Dropbox</th>
+              <th style="padding: 1rem;">Google Drive</th>
+            </tr>
+          </thead>
+          <tbody style="color: var(--text-secondary);">
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+              <td style="padding: 1rem 1rem 1rem 0; font-weight: 600; color: #f8fafc;">Zero-Knowledge Client-Side Encryption</td>
+              <td style="padding: 1rem; color: #34d399; font-weight: 700;">✓ AES-256-GCM + Argon2id</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Server holds master keys</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Server holds master keys</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+              <td style="padding: 1rem 1rem 1rem 0; font-weight: 600; color: #f8fafc;">Encrypted File Names &amp; Paths</td>
+              <td style="padding: 1rem; color: #34d399; font-weight: 700;">✓ Sealed HMAC-derived hashes</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Plaintext visible to server</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Plaintext visible to server</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+              <td style="padding: 1rem 1rem 1rem 0; font-weight: 600; color: #f8fafc;">Bring Your Own S3 Bucket</td>
+              <td style="padding: 1rem; color: #34d399; font-weight: 700;">✓ AWS, R2, B2, MinIO, Seaweed</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Proprietary walled garden</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Proprietary walled garden</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+              <td style="padding: 1rem 1rem 1rem 0; font-weight: 600; color: #f8fafc;">Immutable Append-Only Journal</td>
+              <td style="padding: 1rem; color: #34d399; font-weight: 700;">✓ Ransomware &amp; disaster proof</td>
+              <td style="padding: 1rem; color: #94a3b8;">Limited (30-day revision limit)</td>
+              <td style="padding: 1rem; color: #94a3b8;">Limited (30-day revision limit)</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+              <td style="padding: 1rem 1rem 1rem 0; font-weight: 600; color: #f8fafc;">Open-Source Codebase</td>
+              <td style="padding: 1rem; color: #34d399; font-weight: 700;">✓ 100% Rust &amp; TypeScript (MIT)</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Proprietary binary</td>
+              <td style="padding: 1rem; color: #f87171;">✗ Proprietary binary</td>
+            </tr>
+            <tr>
+              <td style="padding: 1rem 1rem 1rem 0; font-weight: 600; color: #f8fafc;">Sub-Second Real-Time Push Sync</td>
+              <td style="padding: 1rem; color: #34d399; font-weight: 700;">✓ &lt; 600ms WebSocket relay</td>
+              <td style="padding: 1rem; color: #94a3b8;">Proprietary sync loop</td>
+              <td style="padding: 1rem; color: #94a3b8;">Background polling</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart Installation & CLI Tour -->
+  <section id="quickstart" style="padding: 6rem 0; border-top: 1px solid var(--border-subtle); position: relative;">
+    <div class="container">
+      <div style="text-align: center; max-width: 720px; margin: 0 auto 3.5rem auto;">
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.1); border: 1px solid var(--border-cyan); color: #7dd3fc; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+          Get Started in 3 Minutes
+        </div>
+        <h2 style="font-size: 2.25rem; margin-bottom: 0.75rem;">Command-Line Quickstart</h2>
+        <p style="color: var(--text-secondary); font-size: 1rem;">
+          Everything in RenegadeBox is driven by a standalone Rust CLI binary (`rbox`). No background daemons holding your CPU hostage.
+        </p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; max-width: 1000px; margin: 0 auto 4rem auto;">
+        <!-- Step 1 -->
+        <div class="glass-card" style="padding: 1.75rem;">
+          <div style="font-family: var(--font-heading); font-size: 1.5rem; font-weight: 900; color: var(--accent-cyan); margin-bottom: 0.5rem;">01</div>
+          <h3 style="font-size: 1.15rem; margin-bottom: 0.5rem;">Install the CLI</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+            Install via Cargo or pre-compiled native binaries for macOS (Apple Silicon &amp; Intel) and Linux.
+          </p>
+          <pre style="background: #090e18; border: 1px solid var(--border-subtle); border-radius: 0.375rem; padding: 0.75rem; font-size: 0.75rem; color: #7dd3fc; overflow-x: auto;"><code>cargo install --path engine</code></pre>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="glass-card" style="padding: 1.75rem;">
+          <div style="font-family: var(--font-heading); font-size: 1.5rem; font-weight: 900; color: var(--accent-emerald); margin-bottom: 0.5rem;">02</div>
+          <h3 style="font-size: 1.15rem; margin-bottom: 0.5rem;">Initialize Vault</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+            Generate master encryption keys, derive Argon2id parameters, and create the S3 vault.
+          </p>
+          <pre style="background: #090e18; border: 1px solid var(--border-subtle); border-radius: 0.375rem; padding: 0.75rem; font-size: 0.75rem; color: #6ee7b7; overflow-x: auto;"><code>rbox init --bucket my-box</code></pre>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="glass-card" style="padding: 1.75rem;">
+          <div style="font-family: var(--font-heading); font-size: 1.5rem; font-weight: 900; color: var(--accent-purple); margin-bottom: 0.5rem;">03</div>
+          <h3 style="font-size: 1.15rem; margin-bottom: 0.5rem;">Connect to Hub</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+            Pair your machine with the real-time WebSocket Hub to exchange instant sync notifications.
+          </p>
+          <pre style="background: #090e18; border: 1px solid var(--border-subtle); border-radius: 0.375rem; padding: 0.75rem; font-size: 0.75rem; color: #d8b4fe; overflow-x: auto;"><code>rbox login --hub wss://...</code></pre>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="glass-card" style="padding: 1.75rem;">
+          <div style="font-family: var(--font-heading); font-size: 1.5rem; font-weight: 900; color: #f59e0b; margin-bottom: 0.5rem;">04</div>
+          <h3 style="font-size: 1.15rem; margin-bottom: 0.5rem;">Start Real-Time Watch</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1rem;">
+            RenegadeBox watches ~/RenegadeBox and syncs changes in sub-second latency across all devices.
+          </p>
+          <pre style="background: #090e18; border: 1px solid var(--border-subtle); border-radius: 0.375rem; padding: 0.75rem; font-size: 0.75rem; color: #fde68a; overflow-x: auto;"><code>rbox watch</code></pre>
+        </div>
+      </div>
+
+      <!-- Bottom CTA Banner -->
+      <div class="glass-card" style="padding: 3rem; text-align: center; max-width: 900px; margin: 0 auto; background: radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.1) 0%, #0a0e18 100%); border: 1px solid var(--border-focus);">
+        <h3 style="font-size: 1.75rem; margin-bottom: 1rem;">Ready to take back ownership of your files?</h3>
+        <p style="color: var(--text-secondary); font-size: 1rem; max-width: 600px; margin: 0 auto 2rem auto;">
+          RenegadeBox is 100% open-source software under the MIT license. Launch your self-hosted vault today.
+        </p>
+        <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+          <a href="/docs/quickstart" class="btn btn-primary" style="padding: 0.875rem 2rem;">
+            Read Full Documentation
+          </a>
+          <a href="http://localhost:3000" target="_blank" class="btn btn-secondary" style="padding: 0.875rem 2rem;">
+            Open Web Dashboard →
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Interactive Scripts -->
   <script src="../scripts/site.ts"></script>
 </Layout>
