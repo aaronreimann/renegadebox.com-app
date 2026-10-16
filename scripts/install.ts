@@ -16,6 +16,9 @@ const ROOT = join(import.meta.dir, "..");
 const IDENTITY = "RenegadeBox Local Signing";
 const rustup = "/opt/homebrew/opt/rustup/bin";
 const env = { ...process.env, PATH: `${rustup}:${process.env.PATH}` };
+// Bun's shell resolves commands against *this* process's PATH, not the .env() it is given,
+// so call cargo by absolute path when Rust is installed via Homebrew rustup.
+const CARGO = existsSync(join(rustup, "cargo")) ? join(rustup, "cargo") : (Bun.which("cargo") ?? "cargo");
 
 const identities = await $`security find-identity -v -p codesigning`.nothrow().text();
 const canSign = identities.includes(IDENTITY);
@@ -26,7 +29,7 @@ if (!canSign) {
 
 // --- CLI
 console.log("Building rbox…");
-await $`cargo install --path engine --root ${join(homedir(), ".local")} --locked --force --quiet`.cwd(ROOT).env(env);
+await $`${CARGO} install --path engine --root ${join(homedir(), ".local")} --locked --force --quiet`.cwd(ROOT).env(env);
 const rbox = join(homedir(), ".local/bin/rbox");
 if (canSign) {
   await $`codesign --force --sign ${IDENTITY} --identifier com.renegadebox.rbox ${rbox}`.quiet();
@@ -41,7 +44,7 @@ if (process.argv.includes("--desktop")) {
   const desktopEnv = canSign ? { ...env, APPLE_SIGNING_IDENTITY: IDENTITY } : env;
   await $`bun install --silent`.cwd(join(ROOT, "desktop")).env(env);
   await $`bun run build -- --bundles app`.cwd(join(ROOT, "desktop")).env(desktopEnv);
-  const target = JSON.parse(await $`cargo metadata --format-version 1 --no-deps`.cwd(ROOT).env(env).text()).target_directory;
+  const target = JSON.parse(await $`${CARGO} metadata --format-version 1 --no-deps`.cwd(ROOT).env(env).text()).target_directory;
   const bundleDir = join(target, "release/bundle/macos");
   const app = readdirSync(bundleDir).find((f) => f.endsWith(".app"));
   if (!app) throw new Error(`no .app found in ${bundleDir}`);
