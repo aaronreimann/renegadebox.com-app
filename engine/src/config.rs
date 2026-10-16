@@ -80,9 +80,11 @@ impl Profile {
 
     pub fn set_secret(&self, cfg: &Config, name: &str, value: &str) -> Result<()> {
         match cfg.key_store {
-            KeyStoreKind::Keychain => keyring::Entry::new("renegadebox", &format!("{}:{name}", cfg.device_id))?
-                .set_password(value)
-                .map_err(|e| anyhow!("keychain write failed: {e}")),
+            KeyStoreKind::Keychain => {
+                let mut map = keychain::load(&cfg.device_id)?;
+                map.insert(name.to_string(), value.to_string());
+                keychain::store(&cfg.device_id, &map)
+            }
             KeyStoreKind::InsecureFile => {
                 let mut map = self.read_secret_file()?;
                 map.insert(name.to_string(), value.to_string());
@@ -93,9 +95,9 @@ impl Profile {
 
     pub fn get_secret(&self, cfg: &Config, name: &str) -> Result<String> {
         match cfg.key_store {
-            KeyStoreKind::Keychain => keyring::Entry::new("renegadebox", &format!("{}:{name}", cfg.device_id))?
-                .get_password()
-                .map_err(|e| anyhow!("keychain read of {name} failed: {e}")),
+            KeyStoreKind::Keychain => keychain::load(&cfg.device_id)?
+                .remove(name)
+                .ok_or_else(|| anyhow!("{name} is missing from the keychain")),
             KeyStoreKind::InsecureFile => self
                 .read_secret_file()?
                 .remove(name)
@@ -138,9 +140,11 @@ impl Profile {
 
     fn delete_secret(&self, cfg: &Config, name: &str) -> Result<()> {
         match cfg.key_store {
-            KeyStoreKind::Keychain => keyring::Entry::new("renegadebox", &format!("{}:{name}", cfg.device_id))?
-                .delete_credential()
-                .map_err(|e| anyhow!("keychain delete failed: {e}")),
+            KeyStoreKind::Keychain => {
+                let mut map = keychain::load(&cfg.device_id)?;
+                map.remove(name);
+                keychain::store(&cfg.device_id, &map)
+            }
             KeyStoreKind::InsecureFile => {
                 let mut map = self.read_secret_file()?;
                 map.remove(name);
@@ -187,4 +191,88 @@ pub fn validate_device_name(name: &str) -> Result<()> {
         bail!("device name must be 1-128 characters without slashes");
     }
     Ok(())
+}
+
+/// All of a device's secrets live in ONE keychain item (service "renegadebox", account
+/// = device id, password = JSON map). macOS approves keychain access per item, so one item
+/// means one approval prompt per app build instead of one per secret.
+mod keychain {
+    use std::collections::{BTreeMap, HashMap};
+    use std::sync::Mutex;
+
+    use anyhow::{Result, anyhow};
+
+    use super::{SECRET_DEVICE_TOKEN, SECRET_MASTER, SECRET_S3};
+
+    const SERVICE: &str = "renegadebox";
+
+    /// Per-process cache: each secret is read from the keychain at most once per run.
+    static CACHE: Mutex<Option<HashMap<String, BTreeMap<String, String>>>> = Mutex::new(None);
+
+    fn entry(account: &str) -> Result<keyring::Entry> {
+        keyring::Entry::new(SERVICE, account).map_err(|e| anyhow!("keychain: {e}"))
+    }
+
+    pub fn load(device_id: &str) -> Result<BTreeMap<String, String>> {
+        if let Some(map) = CACHE.lock().map_err(|_| anyhow!("keychain cache poisoned"))?.as_ref().and_then(|c| c.get(device_id)) {
+            return Ok(map.clone());
+        }
+        let map = match entry(device_id)?.get_password() {
+            Ok(json) => serde_json::from_str(&json).map_err(|e| anyhow!("keychain item is not valid: {e}"))?,
+            Err(keyring::Error::NoEntry) => migrate_legacy(device_id)?,
+            Err(e) => return Err(anyhow!("keychain read failed: {e}")),
+        };
+        remember(device_id, &map)?;
+        Ok(map)
+    }
+
+    pub fn store(device_id: &str, map: &BTreeMap<String, String>) -> Result<()> {
+        let e = entry(device_id)?;
+        if map.is_empty() {
+            match e.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(err) => return Err(anyhow!("keychain delete failed: {err}")),
+            }
+        } else {
+            e.set_password(&serde_json::to_string(map)?).map_err(|err| anyhow!("keychain write failed: {err}"))?;
+        }
+        remember(device_id, map)
+    }
+
+    fn remember(device_id: &str, map: &BTreeMap<String, String>) -> Result<()> {
+        CACHE
+            .lock()
+            .map_err(|_| anyhow!("keychain cache poisoned"))?
+            .get_or_insert_with(HashMap::new)
+            .insert(device_id.to_string(), map.clone());
+        Ok(())
+    }
+
+    /// Earlier versions stored one keychain item per secret ("<device>:<name>"). Fold them
+    /// into the single item, then remove the old ones (best effort).
+    fn migrate_legacy(device_id: &str) -> Result<BTreeMap<String, String>> {
+        let mut map = BTreeMap::new();
+        let mut found = Vec::new();
+        for name in [SECRET_S3, SECRET_MASTER, SECRET_DEVICE_TOKEN] {
+            let legacy = entry(&format!("{device_id}:{name}"))?;
+            match legacy.get_password() {
+                Ok(v) => {
+                    map.insert(name.to_string(), v);
+                    found.push(legacy);
+                }
+                Err(keyring::Error::NoEntry) => {}
+                Err(e) => return Err(anyhow!("keychain read of {name} failed: {e}")),
+            }
+        }
+        if !found.is_empty() {
+            entry(device_id)?.set_password(&serde_json::to_string(&map)?).map_err(|e| anyhow!("keychain write failed: {e}"))?;
+            for legacy in found {
+                if let Err(e) = legacy.delete_credential() {
+                    tracing::warn!("could not remove an old keychain item: {e}");
+                }
+            }
+            tracing::info!("combined this device's keychain items into one");
+        }
+        Ok(map)
+    }
 }
