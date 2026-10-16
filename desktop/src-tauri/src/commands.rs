@@ -67,6 +67,40 @@ fn notify_user(title: &str, body: &str) {
     eprintln!("[Notify] {title}: {body}");
 }
 
+#[cfg(target_os = "macos")]
+fn set_folder_icon(path: &std::path::Path) {
+    let icon_r = path.join("Icon\r");
+    if icon_r.exists() {
+        return;
+    }
+    let icon_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.join("../Resources/icon.icns")))
+        .filter(|p| p.exists())
+        .or_else(|| {
+            let home = std::env::var("HOME").ok()?;
+            let dev_icon = std::path::PathBuf::from(home)
+                .join("Development/renegadebox.com-app/desktop/src-tauri/icons/icon.icns");
+            if dev_icon.exists() { Some(dev_icon) } else { None }
+        });
+
+    if let Some(icns) = icon_path {
+        let icns_str = icns.to_string_lossy();
+        let path_str = path.to_string_lossy();
+        let script = format!(
+            "ObjC.import('AppKit');\n\
+             var ws = $.NSWorkspace.sharedWorkspace;\n\
+             var img = $.NSImage.alloc.initWithContentsOfFile('{}');\n\
+             if (img) ws.setIconForFileOptions(img, '{}', 0);",
+            icns_str.replace('\\', "\\\\").replace('\'', "\\'"),
+            path_str.replace('\\', "\\\\").replace('\'', "\\'")
+        );
+        let _ = std::process::Command::new("osascript")
+            .args(["-l", "JavaScript", "-e", &script])
+            .spawn();
+    }
+}
+
 fn record_failure(app: &AppHandle, runtime: &Mutex<SyncRuntime>, err: String) {
     let failures = {
         let mut rt = runtime.lock().unwrap();
@@ -162,6 +196,8 @@ pub async fn run_background_watcher(
         }
 
         eprintln!("[Watcher] Native FSEvents auto-sync active on {}", engine.root().display());
+        #[cfg(target_os = "macos")]
+        set_folder_icon(engine.root());
         let _ = app.emit("vault-changed", ());
 
         let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(15));
@@ -802,6 +838,8 @@ pub async fn setup_vault(
     let canonical_folder = expanded_folder
         .canonicalize()
         .map_err(|e| format!("Failed to resolve folder path: {e}"))?;
+    #[cfg(target_os = "macos")]
+    set_folder_icon(&canonical_folder);
 
     if canonical_folder.starts_with(&profile.dir) || profile.dir.starts_with(&canonical_folder) {
         return Err(format!(

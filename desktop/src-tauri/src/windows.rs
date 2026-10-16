@@ -105,6 +105,13 @@ fn open_window<R: Runtime>(app: &AppHandle<R>, label: &str, title: &str, view: &
     if let Some(win) = app.get_webview_window(label) {
         let _ = win.show();
         let _ = win.unminimize();
+        #[cfg(target_os = "macos")]
+        {
+            let _ = win.set_always_on_top(true);
+            let _ = win.set_focus();
+            let _ = win.set_always_on_top(false);
+        }
+        #[cfg(not(target_os = "macos"))]
         let _ = win.set_focus();
         return;
     }
@@ -120,6 +127,13 @@ fn open_window<R: Runtime>(app: &AppHandle<R>, label: &str, title: &str, view: &
         .build()
     {
         Ok(win) => {
+            #[cfg(target_os = "macos")]
+            {
+                let _ = win.set_always_on_top(true);
+                let _ = win.set_focus();
+                let _ = win.set_always_on_top(false);
+            }
+            #[cfg(not(target_os = "macos"))]
             let _ = win.set_focus();
         }
         Err(e) => eprintln!("[Windows] could not open {label}: {e}"),
@@ -128,7 +142,7 @@ fn open_window<R: Runtime>(app: &AppHandle<R>, label: &str, title: &str, view: &
 
 pub fn open_settings<R: Runtime>(app: &AppHandle<R>) {
     hide_popover(app);
-    open_window(app, SETTINGS, "RenegadeBox Settings", "settings", (480.0, 640.0));
+    open_window(app, SETTINGS, "RenegadeBox Settings", "settings", (560.0, 680.0));
 }
 
 pub fn open_setup<R: Runtime>(app: &AppHandle<R>) {

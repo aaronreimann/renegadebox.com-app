@@ -306,6 +306,8 @@
           return args?.useKeychain ? "System keychain" : "Unprotected file";
         case "get_ignored_patterns":
           return [".DS_Store", "Thumbs.db", "*.tmp", ".git/", "node_modules/"];
+        case "add_to_finder_favorites":
+          return "Opened folder in Finder";
         case "setup_vault":
           return new Promise((resolve) => setTimeout(() => resolve({ initialized: true }), 900));
         default:
@@ -342,6 +344,20 @@
   function plural(n, one, many) {
     return `${n} ${n === 1 ? one : many}`;
   }
+  function formatBytes(bytes) {
+    if (!bytes || bytes <= 0)
+      return "0 B";
+    if (bytes < 1024)
+      return `${bytes} B`;
+    const kb = bytes / 1024;
+    if (kb < 1024)
+      return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024)
+      return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(2)} GB`;
+  }
 
   // src/lib/icons.ts
   var svg = (body, size = 16) => `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
@@ -362,7 +378,8 @@
     reveal: (s) => svg('<circle cx="11" cy="11" r="6"/><path d="m20 20-4.35-4.35"/>', s),
     back: (s) => svg('<path d="m15 18-6-6 6-6"/>', s),
     chevron: (s) => svg('<path d="m9 18 6-6-6-6"/>', s),
-    lock: (s) => svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>', s)
+    lock: (s) => svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>', s),
+    external: (s) => svg('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>', s)
   };
   function fileIcon(name) {
     const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
@@ -562,7 +579,10 @@
     const pauseLabel = overview.paused ? "Resume" : "Pause";
     return `
     <section class="popover">
-      <header class="popover-header">${status}</header>
+      <header class="popover-header">
+        ${status}
+        <button id="header-settings-btn" class="icon-btn" type="button" title="Settings" aria-label="Settings">${icons.gear(16)}</button>
+      </header>
       <div class="popover-body">
         ${overview.initialized ? `<h2 class="section-label">Recent</h2>` : ""}
         ${body}
@@ -570,7 +590,7 @@
       <footer class="popover-footer">
         <button id="open-folder-btn" class="footer-btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
         <button id="pause-btn" class="footer-btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
-        <button id="settings-btn" class="footer-btn icon-only" type="button" title="Settings" aria-label="Settings">${icons.gear(18)}</button>
+        <button id="settings-btn" class="footer-btn" type="button" title="Settings" aria-label="Settings">${icons.gear(16)}<span>Settings</span></button>
       </footer>
     </section>`;
   }
@@ -621,82 +641,207 @@
       </div>
     </section>`;
   }
+  function renderPopoverSettings({ status, autostart, ignored }) {
+    const kind = keyStoreKind(status.key_store);
+    const folder = status.folder ?? "~/RenegadeBox";
+    const totalSize = status.total_bytes ? ` · ${formatBytes(status.total_bytes)}` : "";
+    const filesCount = status.total_files ? `${status.total_files} files${totalSize}` : "No files synced yet";
+    return `
+    <section class="popover">
+      <header class="popover-header subpage">
+        <button id="settings-back-btn" class="icon-btn" type="button" aria-label="Back">${icons.back(18)}</button>
+        <h1 class="subpage-title">Settings</h1>
+        <button id="settings-popout-btn" class="icon-btn" type="button" title="Open in separate window" aria-label="Open in separate window" style="margin-left: auto;">${icons.external(16)}</button>
+      </header>
+      <div class="popover-body settings-popover-body">
+        <section class="group">
+          <h2 class="group-title">This Mac</h2>
+          <label class="field">
+            <span class="field-label">Device name</span>
+            <span class="field-row">
+              <input id="device-name-input" type="text" value="${escapeHtml(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
+              <button id="device-name-save" class="btn" type="button">Save</button>
+            </span>
+            <span class="field-hint">Shown on your other devices when files change.</span>
+            <span id="device-name-message" class="inline-message" role="status"></span>
+          </label>
+          <div class="kv">
+            <span class="kv-label">Folder</span>
+            <span class="kv-value" style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:160px;" title="${escapeHtml(folder)}">${escapeHtml(folder)}</span>
+              <button id="settings-open-folder-btn" class="btn" style="padding:2px 8px; font-size:12px;" type="button">Open in Finder</button>
+            </span>
+          </div>
+          <label class="switch-row">
+            <span>
+              <span class="field-label">Start at login</span>
+              <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
+            </span>
+            <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
+          </label>
+        </section>
+
+        <section class="group">
+          <h2 class="group-title">Storage</h2>
+          <div class="kv"><span class="kv-label">Provider</span><span class="kv-value">${escapeHtml(providerLabel(status.endpoint))}</span></div>
+          <div class="kv"><span class="kv-label">Bucket</span><span class="kv-value">${escapeHtml(status.bucket ?? "—")}</span></div>
+          <div class="kv"><span class="kv-label">Region</span><span class="kv-value">${escapeHtml(status.region ?? "—")}</span></div>
+          <div class="kv"><span class="kv-label">Storage used</span><span class="kv-value">${escapeHtml(filesCount)}</span></div>
+          <div class="group-actions" style="margin-top:8px;">
+            <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
+            <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
+          </div>
+        </section>
+
+        <section class="group">
+          <h2 class="group-title">Key storage</h2>
+          <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
+            <span>
+              <span class="field-label">System keychain (recommended)</span>
+              <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
+            <span>
+              <span class="field-label">Unprotected file</span>
+              <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
+            </span>
+          </label>
+          <div id="key-store-confirm" class="confirm" hidden>
+            <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
+            <div class="confirm-actions">
+              <button id="key-store-cancel" class="btn" type="button">Cancel</button>
+              <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
+            </div>
+          </div>
+          <p id="key-store-message" class="inline-message" role="status"></p>
+        </section>
+
+        <section class="group">
+          <h2 class="group-title">Ignored files</h2>
+          <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
+          <textarea id="ignored-input" rows="4" spellcheck="false">${escapeHtml(ignored.join(`
+`))}</textarea>
+          <div class="group-actions">
+            <button id="ignored-save" class="btn" type="button">Save</button>
+            <span id="ignored-message" class="inline-message" role="status"></span>
+          </div>
+        </section>
+
+        <div style="padding:12px 0 8px; text-align:center;">
+          <button id="quit-btn" class="btn" type="button" style="width:100%;">Quit RenegadeBox</button>
+        </div>
+      </div>
+    </section>`;
+  }
   function renderSettings({ status, autostart, ignored }) {
     const kind = keyStoreKind(status.key_store);
     const row = (label, value) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
+    const folder = status.folder ?? "Not set up";
+    const totalSize = status.total_bytes ? ` · ${formatBytes(status.total_bytes)}` : "";
+    const filesCount = status.total_files ? `${status.total_files} files${totalSize}` : "No files synced yet";
     return `
     <main class="settings">
-      <h1 class="window-title">Settings</h1>
+      <header class="settings-window-header">
+        <h1 class="window-title">Settings</h1>
+        <nav class="settings-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
+          <button class="tab-btn" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
+          <button class="tab-btn" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
+          <button class="tab-btn" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
+        </nav>
+      </header>
 
-      <section class="group">
-        <h2 class="group-title">This Mac</h2>
-        <label class="field">
-          <span class="field-label">Device name</span>
-          <span class="field-row">
-            <input id="device-name-input" type="text" value="${escapeHtml(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
-            <button id="device-name-save" class="btn" type="button">Save</button>
-          </span>
-          <span class="field-hint">Shown on your other devices when files change.</span>
-          <span id="device-name-message" class="inline-message" role="status"></span>
-        </label>
-        ${row("Folder", escapeHtml(status.folder ?? "Not set up"))}
-        <label class="switch-row">
-          <span>
-            <span class="field-label">Start at login</span>
-            <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
-          </span>
-          <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
-        </label>
-      </section>
-
-      <section class="group">
-        <h2 class="group-title">Storage</h2>
-        ${row("Provider", escapeHtml(providerLabel(status.endpoint)))}
-        ${row("Bucket", escapeHtml(status.bucket ?? "—"))}
-        ${row("Region", escapeHtml(status.region ?? "—"))}
-        <div class="group-actions">
-          <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
-          <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
-        </div>
-      </section>
-
-      <section class="group">
-        <h2 class="group-title">Key storage</h2>
-        <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
-        <label class="radio-row">
-          <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
-          <span>
-            <span class="field-label">System keychain (recommended)</span>
-            <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
-          </span>
-        </label>
-        <label class="radio-row">
-          <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
-          <span>
-            <span class="field-label">Unprotected file</span>
-            <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
-          </span>
-        </label>
-        <div id="key-store-confirm" class="confirm" hidden>
-          <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
-          <div class="confirm-actions">
-            <button id="key-store-cancel" class="btn" type="button">Cancel</button>
-            <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
+      <div id="tab-panel-general" class="tab-panel active" data-panel="general">
+        <section class="group">
+          <h2 class="group-title">This Mac</h2>
+          <label class="field">
+            <span class="field-label">Device name</span>
+            <span class="field-row">
+              <input id="device-name-input" type="text" value="${escapeHtml(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
+              <button id="device-name-save" class="btn" type="button">Save</button>
+            </span>
+            <span class="field-hint">Shown on your other devices when files change.</span>
+            <span id="device-name-message" class="inline-message" role="status"></span>
+          </label>
+          <div class="kv">
+            <span class="kv-label">Folder</span>
+            <span class="kv-value" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span>${escapeHtml(folder)}</span>
+              <span style="display:inline-flex; gap:6px;">
+                <button id="settings-open-folder-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Open in Finder</button>
+                <button id="add-finder-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Add to Sidebar</button>
+              </span>
+            </span>
           </div>
-        </div>
-        <p id="key-store-message" class="inline-message" role="status"></p>
-      </section>
+          <label class="switch-row">
+            <span>
+              <span class="field-label">Start at login</span>
+              <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
+            </span>
+            <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
+          </label>
+        </section>
+      </div>
 
-      <section class="group">
-        <h2 class="group-title">Ignored files</h2>
-        <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
-        <textarea id="ignored-input" rows="5" spellcheck="false">${escapeHtml(ignored.join(`
+      <div id="tab-panel-storage" class="tab-panel" data-panel="storage">
+        <section class="group">
+          <h2 class="group-title">Storage</h2>
+          ${row("Provider", escapeHtml(providerLabel(status.endpoint)))}
+          ${row("Bucket", escapeHtml(status.bucket ?? "—"))}
+          ${row("Region", escapeHtml(status.region ?? "—"))}
+          ${row("Storage used", escapeHtml(filesCount))}
+          <div class="group-actions" style="margin-top:12px;">
+            <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
+            <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
+          </div>
+        </section>
+      </div>
+
+      <div id="tab-panel-security" class="tab-panel" data-panel="security">
+        <section class="group">
+          <h2 class="group-title">Key storage</h2>
+          <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
+            <span>
+              <span class="field-label">System keychain (recommended)</span>
+              <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
+            <span>
+              <span class="field-label">Unprotected file</span>
+              <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
+            </span>
+          </label>
+          <div id="key-store-confirm" class="confirm" hidden>
+            <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
+            <div class="confirm-actions">
+              <button id="key-store-cancel" class="btn" type="button">Cancel</button>
+              <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
+            </div>
+          </div>
+          <p id="key-store-message" class="inline-message" role="status"></p>
+        </section>
+      </div>
+
+      <div id="tab-panel-ignored" class="tab-panel" data-panel="ignored">
+        <section class="group">
+          <h2 class="group-title">Ignored files</h2>
+          <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
+          <textarea id="ignored-input" rows="6" spellcheck="false">${escapeHtml(ignored.join(`
 `))}</textarea>
-        <div class="group-actions">
-          <button id="ignored-save" class="btn" type="button">Save</button>
-          <span id="ignored-message" class="inline-message" role="status"></span>
-        </div>
-      </section>
+          <div class="group-actions">
+            <button id="ignored-save" class="btn" type="button">Save</button>
+            <span id="ignored-message" class="inline-message" role="status"></span>
+          </div>
+        </section>
+      </div>
 
       <footer class="settings-footer">
         <button id="quit-btn" class="btn" type="button">Quit RenegadeBox</button>
@@ -807,7 +952,9 @@
     overview: null,
     recent: [],
     conflicts: [],
+    settingsModel: null,
     showConflicts: false,
+    showSettings: false,
     busy: false
   };
   async function refreshPopover() {
@@ -819,12 +966,32 @@
       popover.overview = overview;
       popover.recent = recent;
       popover.conflicts = overview.conflicts > 0 || popover.showConflicts ? await invoke2("list_conflicts") : [];
+      if (popover.showSettings) {
+        await loadPopoverSettings();
+      }
     } catch (err) {
       popover.overview = { initialized: true, paused: false, syncing: false, pending: 0, conflicts: 0, error: errText(err) };
     }
     renderPopoverView();
   }
+  async function loadPopoverSettings() {
+    try {
+      const [status, autostart, ignored] = await Promise.all([
+        invoke2("get_vault_status"),
+        invoke2("is_autostart_enabled").catch(() => false),
+        invoke2("get_ignored_patterns").catch(() => [])
+      ]);
+      popover.settingsModel = { status, autostart, ignored };
+    } catch (err) {
+      showPopoverNotice(errText(err));
+    }
+  }
   function renderPopoverView() {
+    if (popover.showSettings && popover.settingsModel) {
+      root().innerHTML = renderPopoverSettings(popover.settingsModel);
+      bindSettings(popover.settingsModel.status);
+      return;
+    }
     if (!popover.overview)
       return;
     root().innerHTML = popover.showConflicts ? renderConflictList({ conflicts: popover.conflicts, now: Date.now() }) : renderPopover({ overview: popover.overview, recent: popover.recent, now: Date.now() });
@@ -837,10 +1004,25 @@
     try {
       if (target.id === "status-line" && target.classList.contains("status-link")) {
         popover.showConflicts = true;
+        popover.showSettings = false;
         await refreshPopover();
       } else if (target.id === "conflicts-back") {
         popover.showConflicts = false;
         renderPopoverView();
+      } else if (target.id === "settings-btn" || target.id === "header-settings-btn") {
+        popover.showSettings = true;
+        popover.showConflicts = false;
+        await loadPopoverSettings();
+        renderPopoverView();
+      } else if (target.id === "settings-back-btn") {
+        popover.showSettings = false;
+        renderPopoverView();
+      } else if (target.id === "settings-popout-btn") {
+        popover.showSettings = false;
+        await invoke2("open_settings");
+        renderPopoverView();
+      } else if (target.id === "settings-open-folder-btn") {
+        await invoke2("open_sync_folder");
       } else if (target.dataset.resolution) {
         const item = popover.conflicts[index];
         if (!item)
@@ -867,8 +1049,6 @@
       } else if (target.id === "pause-btn") {
         await invoke2(popover.overview?.paused ? "resume_sync" : "pause_sync");
         await refreshPopover();
-      } else if (target.id === "settings-btn") {
-        await invoke2("open_settings");
       } else if (target.id === "start-setup-btn") {
         await invoke2("open_setup");
       }
@@ -891,8 +1071,23 @@
   function initPopover() {
     root().addEventListener("click", (e) => void onPopoverClick(e));
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape")
-        invoke2("hide_popover");
+      if (e.key === "Escape") {
+        if (popover.showSettings) {
+          popover.showSettings = false;
+          renderPopoverView();
+        } else if (popover.showConflicts) {
+          popover.showConflicts = false;
+          renderPopoverView();
+        } else {
+          invoke2("hide_popover");
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        invoke2("open_settings");
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        invoke2("open_sync_folder");
+      }
     });
     window.addEventListener("focus", () => void refreshPopover());
     let pending = null;
@@ -913,6 +1108,15 @@
     ]);
     root().innerHTML = renderSettings({ status, autostart, ignored });
     bindSettings(status);
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.querySelector(`[data-panel="${tab}"]`)?.classList.add("active");
+      });
+    });
   }
   function flash(id, text, isError = false) {
     const el = $(id);
@@ -982,6 +1186,15 @@
         flash("ignored-message", "Saved.");
       } catch (err) {
         flash("ignored-message", errText(err), true);
+      }
+    });
+    $("settings-open-folder-btn")?.addEventListener("click", () => void invoke2("open_sync_folder"));
+    $("add-finder-btn")?.addEventListener("click", async () => {
+      try {
+        await invoke2("add_to_finder_favorites");
+        flash("device-name-message", "Added to Finder sidebar.");
+      } catch {
+        await invoke2("open_sync_folder");
       }
     });
     $("reconnect-btn").addEventListener("click", () => void invoke2("open_setup"));

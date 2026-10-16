@@ -1,5 +1,5 @@
 // Pure HTML renderers for each screen. No DOM access here, so they can be tested with bun.
-import { escapeHtml as esc, relativeTime } from "./format";
+import { escapeHtml as esc, relativeTime, formatBytes } from "./format";
 import { fileIcon, icons } from "./icons";
 import { describeStatus, type Overview, type StatusKind } from "./status";
 import { keyStoreKind } from "./actions";
@@ -50,7 +50,10 @@ export function renderPopover({ overview, recent, now }: PopoverModel): string {
   const pauseLabel = overview.paused ? "Resume" : "Pause";
   return `
     <section class="popover">
-      <header class="popover-header">${status}</header>
+      <header class="popover-header">
+        ${status}
+        <button id="header-settings-btn" class="icon-btn" type="button" title="Settings" aria-label="Settings">${icons.gear(16)}</button>
+      </header>
       <div class="popover-body">
         ${overview.initialized ? `<h2 class="section-label">Recent</h2>` : ""}
         ${body}
@@ -58,7 +61,7 @@ export function renderPopover({ overview, recent, now }: PopoverModel): string {
       <footer class="popover-footer">
         <button id="open-folder-btn" class="footer-btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
         <button id="pause-btn" class="footer-btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
-        <button id="settings-btn" class="footer-btn icon-only" type="button" title="Settings" aria-label="Settings">${icons.gear(18)}</button>
+        <button id="settings-btn" class="footer-btn" type="button" title="Settings" aria-label="Settings">${icons.gear(16)}<span>Settings</span></button>
       </footer>
     </section>`;
 }
@@ -121,81 +124,208 @@ export interface SettingsModel {
   ignored: string[];
 }
 
+export function renderPopoverSettings({ status, autostart, ignored }: SettingsModel): string {
+  const kind = keyStoreKind(status.key_store);
+  const folder = status.folder ?? "~/RenegadeBox";
+  const totalSize = status.total_bytes ? ` · ${formatBytes(status.total_bytes)}` : "";
+  const filesCount = status.total_files ? `${status.total_files} files${totalSize}` : "No files synced yet";
+
+  return `
+    <section class="popover">
+      <header class="popover-header subpage">
+        <button id="settings-back-btn" class="icon-btn" type="button" aria-label="Back">${icons.back(18)}</button>
+        <h1 class="subpage-title">Settings</h1>
+        <button id="settings-popout-btn" class="icon-btn" type="button" title="Open in separate window" aria-label="Open in separate window" style="margin-left: auto;">${icons.external(16)}</button>
+      </header>
+      <div class="popover-body settings-popover-body">
+        <section class="group">
+          <h2 class="group-title">This Mac</h2>
+          <label class="field">
+            <span class="field-label">Device name</span>
+            <span class="field-row">
+              <input id="device-name-input" type="text" value="${esc(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
+              <button id="device-name-save" class="btn" type="button">Save</button>
+            </span>
+            <span class="field-hint">Shown on your other devices when files change.</span>
+            <span id="device-name-message" class="inline-message" role="status"></span>
+          </label>
+          <div class="kv">
+            <span class="kv-label">Folder</span>
+            <span class="kv-value" style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:160px;" title="${esc(folder)}">${esc(folder)}</span>
+              <button id="settings-open-folder-btn" class="btn" style="padding:2px 8px; font-size:12px;" type="button">Open in Finder</button>
+            </span>
+          </div>
+          <label class="switch-row">
+            <span>
+              <span class="field-label">Start at login</span>
+              <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
+            </span>
+            <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
+          </label>
+        </section>
+
+        <section class="group">
+          <h2 class="group-title">Storage</h2>
+          <div class="kv"><span class="kv-label">Provider</span><span class="kv-value">${esc(providerLabel(status.endpoint))}</span></div>
+          <div class="kv"><span class="kv-label">Bucket</span><span class="kv-value">${esc(status.bucket ?? "—")}</span></div>
+          <div class="kv"><span class="kv-label">Region</span><span class="kv-value">${esc(status.region ?? "—")}</span></div>
+          <div class="kv"><span class="kv-label">Storage used</span><span class="kv-value">${esc(filesCount)}</span></div>
+          <div class="group-actions" style="margin-top:8px;">
+            <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
+            <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
+          </div>
+        </section>
+
+        <section class="group">
+          <h2 class="group-title">Key storage</h2>
+          <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
+            <span>
+              <span class="field-label">System keychain (recommended)</span>
+              <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
+            <span>
+              <span class="field-label">Unprotected file</span>
+              <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
+            </span>
+          </label>
+          <div id="key-store-confirm" class="confirm" hidden>
+            <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
+            <div class="confirm-actions">
+              <button id="key-store-cancel" class="btn" type="button">Cancel</button>
+              <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
+            </div>
+          </div>
+          <p id="key-store-message" class="inline-message" role="status"></p>
+        </section>
+
+        <section class="group">
+          <h2 class="group-title">Ignored files</h2>
+          <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
+          <textarea id="ignored-input" rows="4" spellcheck="false">${esc(ignored.join("\n"))}</textarea>
+          <div class="group-actions">
+            <button id="ignored-save" class="btn" type="button">Save</button>
+            <span id="ignored-message" class="inline-message" role="status"></span>
+          </div>
+        </section>
+
+        <div style="padding:12px 0 8px; text-align:center;">
+          <button id="quit-btn" class="btn" type="button" style="width:100%;">Quit RenegadeBox</button>
+        </div>
+      </div>
+    </section>`;
+}
+
 export function renderSettings({ status, autostart, ignored }: SettingsModel): string {
   const kind = keyStoreKind(status.key_store);
   const row = (label: string, value: string) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
+  const folder = status.folder ?? "Not set up";
+  const totalSize = status.total_bytes ? ` · ${formatBytes(status.total_bytes)}` : "";
+  const filesCount = status.total_files ? `${status.total_files} files${totalSize}` : "No files synced yet";
+
   return `
     <main class="settings">
-      <h1 class="window-title">Settings</h1>
+      <header class="settings-window-header">
+        <h1 class="window-title">Settings</h1>
+        <nav class="settings-tabs" role="tablist">
+          <button class="tab-btn active" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
+          <button class="tab-btn" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
+          <button class="tab-btn" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
+          <button class="tab-btn" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
+        </nav>
+      </header>
 
-      <section class="group">
-        <h2 class="group-title">This Mac</h2>
-        <label class="field">
-          <span class="field-label">Device name</span>
-          <span class="field-row">
-            <input id="device-name-input" type="text" value="${esc(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
-            <button id="device-name-save" class="btn" type="button">Save</button>
-          </span>
-          <span class="field-hint">Shown on your other devices when files change.</span>
-          <span id="device-name-message" class="inline-message" role="status"></span>
-        </label>
-        ${row("Folder", esc(status.folder ?? "Not set up"))}
-        <label class="switch-row">
-          <span>
-            <span class="field-label">Start at login</span>
-            <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
-          </span>
-          <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
-        </label>
-      </section>
-
-      <section class="group">
-        <h2 class="group-title">Storage</h2>
-        ${row("Provider", esc(providerLabel(status.endpoint)))}
-        ${row("Bucket", esc(status.bucket ?? "—"))}
-        ${row("Region", esc(status.region ?? "—"))}
-        <div class="group-actions">
-          <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
-          <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
-        </div>
-      </section>
-
-      <section class="group">
-        <h2 class="group-title">Key storage</h2>
-        <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
-        <label class="radio-row">
-          <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
-          <span>
-            <span class="field-label">System keychain (recommended)</span>
-            <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
-          </span>
-        </label>
-        <label class="radio-row">
-          <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
-          <span>
-            <span class="field-label">Unprotected file</span>
-            <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
-          </span>
-        </label>
-        <div id="key-store-confirm" class="confirm" hidden>
-          <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
-          <div class="confirm-actions">
-            <button id="key-store-cancel" class="btn" type="button">Cancel</button>
-            <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
+      <div id="tab-panel-general" class="tab-panel active" data-panel="general">
+        <section class="group">
+          <h2 class="group-title">This Mac</h2>
+          <label class="field">
+            <span class="field-label">Device name</span>
+            <span class="field-row">
+              <input id="device-name-input" type="text" value="${esc(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
+              <button id="device-name-save" class="btn" type="button">Save</button>
+            </span>
+            <span class="field-hint">Shown on your other devices when files change.</span>
+            <span id="device-name-message" class="inline-message" role="status"></span>
+          </label>
+          <div class="kv">
+            <span class="kv-label">Folder</span>
+            <span class="kv-value" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span>${esc(folder)}</span>
+              <span style="display:inline-flex; gap:6px;">
+                <button id="settings-open-folder-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Open in Finder</button>
+                <button id="add-finder-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Add to Sidebar</button>
+              </span>
+            </span>
           </div>
-        </div>
-        <p id="key-store-message" class="inline-message" role="status"></p>
-      </section>
+          <label class="switch-row">
+            <span>
+              <span class="field-label">Start at login</span>
+              <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
+            </span>
+            <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
+          </label>
+        </section>
+      </div>
 
-      <section class="group">
-        <h2 class="group-title">Ignored files</h2>
-        <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
-        <textarea id="ignored-input" rows="5" spellcheck="false">${esc(ignored.join("\n"))}</textarea>
-        <div class="group-actions">
-          <button id="ignored-save" class="btn" type="button">Save</button>
-          <span id="ignored-message" class="inline-message" role="status"></span>
-        </div>
-      </section>
+      <div id="tab-panel-storage" class="tab-panel" data-panel="storage">
+        <section class="group">
+          <h2 class="group-title">Storage</h2>
+          ${row("Provider", esc(providerLabel(status.endpoint)))}
+          ${row("Bucket", esc(status.bucket ?? "—"))}
+          ${row("Region", esc(status.region ?? "—"))}
+          ${row("Storage used", esc(filesCount))}
+          <div class="group-actions" style="margin-top:12px;">
+            <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
+            <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
+          </div>
+        </section>
+      </div>
+
+      <div id="tab-panel-security" class="tab-panel" data-panel="security">
+        <section class="group">
+          <h2 class="group-title">Key storage</h2>
+          <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
+            <span>
+              <span class="field-label">System keychain (recommended)</span>
+              <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
+            </span>
+          </label>
+          <label class="radio-row">
+            <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
+            <span>
+              <span class="field-label">Unprotected file</span>
+              <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
+            </span>
+          </label>
+          <div id="key-store-confirm" class="confirm" hidden>
+            <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
+            <div class="confirm-actions">
+              <button id="key-store-cancel" class="btn" type="button">Cancel</button>
+              <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
+            </div>
+          </div>
+          <p id="key-store-message" class="inline-message" role="status"></p>
+        </section>
+      </div>
+
+      <div id="tab-panel-ignored" class="tab-panel" data-panel="ignored">
+        <section class="group">
+          <h2 class="group-title">Ignored files</h2>
+          <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
+          <textarea id="ignored-input" rows="6" spellcheck="false">${esc(ignored.join("\n"))}</textarea>
+          <div class="group-actions">
+            <button id="ignored-save" class="btn" type="button">Save</button>
+            <span id="ignored-message" class="inline-message" role="status"></span>
+          </div>
+        </section>
+      </div>
 
       <footer class="settings-footer">
         <button id="quit-btn" class="btn" type="button">Quit RenegadeBox</button>

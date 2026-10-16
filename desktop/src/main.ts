@@ -4,7 +4,7 @@
 //   setup             - first run, or "Reconnect…" in Settings
 // Without Tauri (a normal browser) it runs on sample data; see lib/ipc.ts.
 import { invoke, hasTauri, MOCK_SCENARIOS, mockScenarioFromUrl, type MockScenario } from "./lib/ipc";
-import { renderPopover, renderConflictList, renderSettings, renderSetup } from "./lib/views";
+import { renderPopover, renderConflictList, renderSettings, renderPopoverSettings, renderSetup, type SettingsModel } from "./lib/views";
 import { friendlyError, type Overview } from "./lib/status";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "./lib/actions";
 import { PROVIDERS, SETUP_STEPS, MIN_PASSPHRASE, validateSetupStep, setupErrorStep, type ProviderId, type SetupValues } from "./lib/setup";
@@ -37,7 +37,9 @@ const popover = {
   overview: null as Overview | null,
   recent: [] as RecentFile[],
   conflicts: [] as ConflictItem[],
+  settingsModel: null as SettingsModel | null,
   showConflicts: false,
+  showSettings: false,
   busy: false,
 };
 
@@ -50,13 +52,34 @@ async function refreshPopover() {
     popover.overview = overview;
     popover.recent = recent;
     popover.conflicts = overview.conflicts > 0 || popover.showConflicts ? await invoke<ConflictItem[]>("list_conflicts") : [];
+    if (popover.showSettings) {
+      await loadPopoverSettings();
+    }
   } catch (err) {
     popover.overview = { initialized: true, paused: false, syncing: false, pending: 0, conflicts: 0, error: errText(err) };
   }
   renderPopoverView();
 }
 
+async function loadPopoverSettings() {
+  try {
+    const [status, autostart, ignored] = await Promise.all([
+      invoke<VaultStatus>("get_vault_status"),
+      invoke<boolean>("is_autostart_enabled").catch(() => false),
+      invoke<string[]>("get_ignored_patterns").catch(() => [] as string[]),
+    ]);
+    popover.settingsModel = { status, autostart, ignored };
+  } catch (err) {
+    showPopoverNotice(errText(err));
+  }
+}
+
 function renderPopoverView() {
+  if (popover.showSettings && popover.settingsModel) {
+    root().innerHTML = renderPopoverSettings(popover.settingsModel);
+    bindSettings(popover.settingsModel.status);
+    return;
+  }
   if (!popover.overview) return;
   root().innerHTML = popover.showConflicts
     ? renderConflictList({ conflicts: popover.conflicts, now: Date.now() })
@@ -71,10 +94,25 @@ async function onPopoverClick(ev: MouseEvent) {
   try {
     if (target.id === "status-line" && target.classList.contains("status-link")) {
       popover.showConflicts = true;
+      popover.showSettings = false;
       await refreshPopover();
     } else if (target.id === "conflicts-back") {
       popover.showConflicts = false;
       renderPopoverView();
+    } else if (target.id === "settings-btn" || target.id === "header-settings-btn") {
+      popover.showSettings = true;
+      popover.showConflicts = false;
+      await loadPopoverSettings();
+      renderPopoverView();
+    } else if (target.id === "settings-back-btn") {
+      popover.showSettings = false;
+      renderPopoverView();
+    } else if (target.id === "settings-popout-btn") {
+      popover.showSettings = false;
+      await invoke("open_settings");
+      renderPopoverView();
+    } else if (target.id === "settings-open-folder-btn") {
+      await invoke("open_sync_folder");
     } else if (target.dataset.resolution) {
       const item = popover.conflicts[index];
       if (!item) return;
@@ -98,8 +136,6 @@ async function onPopoverClick(ev: MouseEvent) {
     } else if (target.id === "pause-btn") {
       await invoke(popover.overview?.paused ? "resume_sync" : "pause_sync");
       await refreshPopover();
-    } else if (target.id === "settings-btn") {
-      await invoke("open_settings");
     } else if (target.id === "start-setup-btn") {
       await invoke("open_setup");
     }
@@ -123,7 +159,23 @@ function showPopoverNotice(raw: string) {
 function initPopover() {
   root().addEventListener("click", (e) => void onPopoverClick(e));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") void invoke("hide_popover");
+    if (e.key === "Escape") {
+      if (popover.showSettings) {
+        popover.showSettings = false;
+        renderPopoverView();
+      } else if (popover.showConflicts) {
+        popover.showConflicts = false;
+        renderPopoverView();
+      } else {
+        void invoke("hide_popover");
+      }
+    } else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+      e.preventDefault();
+      void invoke("open_settings");
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+      e.preventDefault();
+      void invoke("open_sync_folder");
+    }
   });
   window.addEventListener("focus", () => void refreshPopover());
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -146,6 +198,17 @@ async function loadSettings() {
   ]);
   root().innerHTML = renderSettings({ status, autostart, ignored });
   bindSettings(status);
+
+  // Tab switching in settings window
+  document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.querySelector(`[data-panel="${tab}"]`)?.classList.add("active");
+    });
+  });
 }
 
 function flash(id: string, text: string, isError = false) {
@@ -226,6 +289,16 @@ function bindSettings(status: VaultStatus) {
       flash("ignored-message", "Saved.");
     } catch (err) {
       flash("ignored-message", errText(err), true);
+    }
+  });
+
+  $("settings-open-folder-btn")?.addEventListener("click", () => void invoke("open_sync_folder"));
+  $("add-finder-btn")?.addEventListener("click", async () => {
+    try {
+      await invoke("add_to_finder_favorites");
+      flash("device-name-message", "Added to Finder sidebar.");
+    } catch {
+      await invoke("open_sync_folder");
     }
   });
 

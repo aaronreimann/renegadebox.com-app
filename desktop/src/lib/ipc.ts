@@ -128,6 +128,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> |
         return args?.useKeychain ? "System keychain" : "Unprotected file";
       case "get_ignored_patterns":
         return [".DS_Store", "Thumbs.db", "*.tmp", ".git/", "node_modules/"];
+      case "add_to_finder_favorites":
+        return "Opened folder in Finder";
       case "setup_vault":
         return new Promise((resolve) => setTimeout(() => resolve({ initialized: true }), 900));
       default:

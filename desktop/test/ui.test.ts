@@ -5,6 +5,7 @@ import {
   renderPopover,
   renderConflictList,
   renderSettings,
+  renderPopoverSettings,
   renderSetup,
 } from "../src/lib/views";
 import { validateSetupStep, PROVIDERS, providerLabel, type SetupValues } from "../src/lib/setup";
@@ -253,6 +254,31 @@ describe("settings", () => {
     expect(providerLabel("http://localhost:8333")).toBe("Local test server");
     expect(providerLabel("https://abc.r2.cloudflarestorage.com")).toBe("Cloudflare R2");
     expect(providerLabel("https://s3.wasabisys.com")).toBe("Wasabi");
+  });
+
+  it("organizes standalone settings with macOS-style preference tabs", () => {
+    const html = renderSettings({ status, autostart: true, ignored: [".DS_Store", "*.tmp"] });
+    expect(html).toContain('data-tab="general"');
+    expect(html).toContain('data-tab="storage"');
+    expect(html).toContain('data-tab="security"');
+    expect(html).toContain('data-tab="ignored"');
+    expect(html).toContain('id="tab-panel-general"');
+    expect(html).toContain('id="tab-panel-storage"');
+    expect(html).toContain('id="tab-panel-security"');
+    expect(html).toContain('id="tab-panel-ignored"');
+  });
+
+  it("renders settings directly inside popover for quick access", () => {
+    const html = renderPopoverSettings({ status, autostart: true, ignored: [".DS_Store"] });
+    expect(html).toContain("id=\"settings-back-btn\"");
+    expect(html).toContain("id=\"settings-popout-btn\"");
+    expect(html).toContain("My-MBP");
+    expect(html).toContain("Local test server");
+    expect(html).toContain("id=\"autostart-toggle\"");
+    expect(html).not.toMatch(DEV_DETAIL);
+
+    const s3Html = renderPopoverSettings({ status: { ...status, endpoint: null }, autostart: false, ignored: [] });
+    expect(s3Html).toContain("Amazon S3");
   });
 });
 
