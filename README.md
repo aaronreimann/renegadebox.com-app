@@ -13,6 +13,7 @@ How it works and why: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Living spec 
 | `hub/` | WebSocket relay (Bun + Postgres `LISTEN/NOTIFY`) | Phase 2 ✅ |
 | `dashboard/` | Astro SSR: accounts, devices, tokens | Phase 2 ✅ |
 | `site/` | Astro static marketing & documentation site (`renegadebox.com`) | Phase 4 ✅ |
+| `desktop/` | Tauri v2 desktop GUI application (macOS/Linux/Windows) | Phase 5 ✅ |
 | `scripts/` | `e2e.ts` (S3 engine) & `e2e-hub.ts` (real-time push) | ✅ |
 
 ## Quickstart (local)
@@ -79,6 +80,9 @@ bun scripts/e2e-hub.ts
 
 # 7. Marketing & Documentation site (Astro static build & 39 assertions)
 (cd site && bun run build && bun test)
+
+# 8. Desktop GUI client (Tauri v2 tests, TypeScript check, Cargo check)
+(cd desktop && bun test && bunx tsc --noEmit && cd src-tauri && cargo check)
 ```
 
 ## License
