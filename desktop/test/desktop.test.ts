@@ -347,7 +347,7 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(mainTs).toContain("set_autostart_enabled");
   });
 
-  it("has silent zero-prompt keystore migration and Finder favorites integration", () => {
+  it("has keystore switching between System keychain and file store, plus Finder favorites integration", () => {
     const htmlPath = join(DESKTOP_DIR, "src/index.html");
     const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
     const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
@@ -360,12 +360,11 @@ describe("RenegadeBox Desktop GUI Application", () => {
 
     expect(html).toContain('id="migrate-keystore-btn"');
     expect(html).toContain('id="add-finder-btn"');
-    expect(commands).toContain("pub fn migrate_keychain_to_silent_keystore");
-    expect(commands).toContain("pub fn migrate_to_silent_keystore");
+    expect(commands).toContain("pub fn set_key_store");
     expect(commands).toContain("pub fn add_to_finder_favorites");
-    expect(lib).toContain("commands::migrate_to_silent_keystore");
+    expect(lib).toContain("commands::set_key_store");
     expect(lib).toContain("commands::add_to_finder_favorites");
-    expect(mainTs).toContain("migrate_to_silent_keystore");
+    expect(mainTs).toContain("set_key_store");
     expect(mainTs).toContain("add_to_finder_favorites");
   });
 });

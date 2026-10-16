@@ -278,8 +278,8 @@ async function tauriInvoke(cmd, args) {
   if (cmd === "set_autostart_enabled") {
     return args?.enabled ?? false;
   }
-  if (cmd === "migrate_to_silent_keystore") {
-    return true;
+  if (cmd === "set_key_store") {
+    return args?.useKeychain ? "System keychain" : "Unprotected file";
   }
   if (cmd === "add_to_finder_favorites") {
     return "Opened ~/RenegadeBox in Finder";
@@ -1077,20 +1077,27 @@ async function openSettingsModal() {
   const keystoreDesc = document.getElementById("cfg-keystore-desc");
   const migrateBtn = document.getElementById("migrate-keystore-btn");
   const warnEl = document.getElementById("keychain-prompt-warning");
-  if (currentVaultStatus?.key_store?.includes("Keychain")) {
-    if (keystoreDesc)
-      keystoreDesc.textContent = "macOS Keychain (Interactive Authorization)";
-    if (migrateBtn)
-      migrateBtn.style.display = "block";
-    if (warnEl)
-      warnEl.style.display = "block";
-  } else {
-    if (keystoreDesc)
-      keystoreDesc.textContent = currentVaultStatus?.key_store || "App-Protected Private Keystore (Zero Prompts)";
-    if (migrateBtn)
-      migrateBtn.style.display = "none";
-    if (warnEl)
-      warnEl.style.display = "none";
+  const isKeychain = (currentVaultStatus?.key_store || "").toLowerCase().includes("keychain");
+  if (keystoreDesc) {
+    keystoreDesc.textContent = currentVaultStatus?.key_store || (isKeychain ? "System keychain" : "Unprotected file");
+  }
+  if (migrateBtn) {
+    migrateBtn.style.display = "block";
+    if (isKeychain) {
+      migrateBtn.textContent = "Switch to File Store";
+      migrateBtn.setAttribute("data-target", "file");
+    } else {
+      migrateBtn.textContent = "Switch to System Keychain";
+      migrateBtn.setAttribute("data-target", "keychain");
+    }
+  }
+  if (warnEl) {
+    warnEl.style.display = "block";
+    if (isKeychain) {
+      warnEl.innerHTML = "ℹ️ Stored in OS keychain. If macOS asks repeatedly during development, sign with an Apple Development identity or switch to file store.";
+    } else {
+      warnEl.innerHTML = "⚠️ Secrets are stored in an unprotected file (~/.renegadebox/secrets.insecure.json), readable by any app running as you.";
+    }
   }
 }
 function closeSettingsModal() {
@@ -1280,8 +1287,8 @@ async function handleSetupWizardSubmit() {
     return;
   }
   if (currentWizardStep === 3) {
-    if (!passphrase || passphrase.length < 6) {
-      return showError("Passphrase must be at least 6 characters long.");
+    if (!passphrase || passphrase.length < 12) {
+      return showError("Passphrase must be at least 12 characters — it is the only thing protecting your files.");
     }
     if (passphrase !== confirmPass) {
       return showError("Passphrases do not match. Please re-enter.");
@@ -1582,17 +1589,16 @@ async function initDesktopApp() {
     }
   });
   document.getElementById("migrate-keystore-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("migrate-keystore-btn");
+    const target = btn?.getAttribute("data-target") ?? "file";
+    const useKeychain = target === "keychain";
     try {
-      const ok = await tauriInvoke("migrate_to_silent_keystore");
-      if (ok) {
-        showToast("⚡ Successfully switched to Silent Private Keystore! Zero prompts on launch.", "success");
-        await refreshVaultStatus();
-        openSettingsModal();
-      } else {
-        showToast("Already using silent keystore.", "info");
-      }
+      const res = await tauriInvoke("set_key_store", { use_keychain: useKeychain, useKeychain });
+      showToast(`⚡ Keystore switched to ${res}`, "success");
+      await refreshVaultStatus();
+      openSettingsModal();
     } catch (err) {
-      showToast(`Migration error: ${err instanceof Error ? err.message : String(err)}`, "error");
+      showToast(`Keystore error: ${err instanceof Error ? err.message : String(err)}`, "error");
     }
   });
   document.getElementById("open-setup-wizard-btn")?.addEventListener("click", () => {
