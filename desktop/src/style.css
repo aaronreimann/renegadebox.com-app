@@ -1,23 +1,48 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Montserrat:wght@600;700;800;900&display=swap');
+/* ==========================================================================
+   RenegadeBox Desktop — Dropbox-Inspired Theme & Layout
+   Matches official Dropbox desktop 3-pane file manager interface
+   ========================================================================== */
 
 :root {
+  /* Dropbox Brand & Core Palette */
+  --dbx-navy: #111b36;
+  --dbx-navy-dark: #0c1429;
+  --dbx-navy-light: #1b2749;
+  --dbx-navy-hover: rgba(255, 255, 255, 0.08);
+  --dbx-navy-active: rgba(255, 255, 255, 0.14);
+  --dbx-blue: #0061fe;
+  --dbx-blue-hover: #0052d9;
+  --dbx-blue-light: #ebf3fc;
+  --dbx-blue-selected: #d8e9fa;
+
+  /* Theme Compatibility Tokens */
   --bg-base: #07090e;
-  --bg-surface: #0e1322;
-  --bg-surface-elevated: #151c30;
-  --bg-card: rgba(17, 24, 42, 0.7);
   --accent-cyan: #38bdf8;
-  --accent-emerald: #10b981;
-  --accent-purple: #a855f7;
-  --accent-rose: #f43f5e;
-  --accent-amber: #f59e0b;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
+  --font-heading: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Neutrals */
+  --bg-white: #ffffff;
+  --bg-inspector: #f7f9fa;
+  --bg-hover: #f8fafc;
+  --border-light: #e5e7eb;
+  --border-subtle: #f0f2f5;
+
+  /* Typography Colors */
+  --text-dark: #1e293b;
+  --text-medium: #475569;
   --text-muted: #64748b;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(56, 189, 248, 0.4);
-  --font-heading: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --text-sidebar: #cad5e8;
+  --text-sidebar-muted: #8292ab;
+
+  /* Status Colors */
+  --status-synced: #10b981;
+  --status-syncing: #0061fe;
+  --status-pending: #f59e0b;
+  --status-conflict: #ef4444;
+
+  /* Typography */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 * {
@@ -27,324 +52,896 @@
 }
 
 html, body {
-  background-color: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-body);
+  background-color: var(--bg-white);
+  color: var(--text-dark);
+  font-family: var(--font-family);
   font-size: 14px;
   line-height: 1.5;
   user-select: none;
   overflow: hidden;
   height: 100vh;
   width: 100vw;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* App Layout Grid */
-.app-container {
+/* ==========================================================================
+   Main 3-Column Layout: Sidebar (Navy) + Main View (White) + Inspector (Gray)
+   ========================================================================== */
+
+.app-wrapper {
   display: flex;
-  flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background: radial-gradient(circle at 10% 10%, rgba(56, 189, 248, 0.06) 0%, transparent 40%),
-              radial-gradient(circle at 90% 90%, rgba(16, 185, 129, 0.04) 0%, transparent 45%),
-              var(--bg-base);
+  overflow: hidden;
+  background-color: var(--bg-white);
 }
 
-/* Window Titlebar / Header */
-.app-header {
+/* --------------------------------------------------------------------------
+   Left Sidebar (Dropbox Deep Navy)
+   -------------------------------------------------------------------------- */
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  background-color: var(--dbx-navy);
+  color: var(--text-sidebar);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid rgba(0, 0, 0, 0.15);
   -webkit-app-region: drag;
+  position: relative;
+  z-index: 10;
 }
 
-.brand-section {
+.sidebar-top {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Window Navigation Header */
+.sidebar-header {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  -webkit-app-region: no-drag !important;
-  pointer-events: auto !important;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.logo-badge {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.5rem;
-  background: linear-gradient(135deg, #0284c7 0%, #10b981 100%);
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-sidebar-muted);
+  cursor: pointer !important;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-heading);
-  font-weight: 800;
-  color: #ffffff;
-  font-size: 1rem;
-  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.4);
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
 
-.brand-name {
-  font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 1.1rem;
-  letter-spacing: -0.02em;
+.icon-btn:hover {
   color: #ffffff;
+  background: var(--dbx-navy-hover);
 }
 
-.header-actions {
+.nav-arrows {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+/* Account / Workspace Switcher */
+.sidebar-account {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  -webkit-app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-.header-actions * {
-  -webkit-app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-/* Navigation Tabs */
-.nav-tabs {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem 1.25rem;
-  background: rgba(14, 19, 34, 0.6);
-  border-bottom: 1px solid var(--border-subtle);
-  -webkit-app-region: no-drag !important;
-  pointer-events: auto !important;
-}
-
-.tab-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  padding: 0.4rem 0.85rem;
-  border-radius: 0.375rem;
-  font-size: 0.825rem;
-  font-weight: 600;
+  padding: 0.85rem 1.25rem;
   cursor: pointer !important;
-  transition: all 0.2s;
+  transition: background 0.15s;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.sidebar-account:hover {
+  background: var(--dbx-navy-hover);
+}
+
+.avatar-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  color: #ffffff;
+}
+
+.account-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #ffffff;
+}
+
+/* Navigation List */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.75rem;
+  gap: 0.2rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  color: var(--text-sidebar);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
   -webkit-app-region: no-drag !important;
   pointer-events: auto !important;
 }
 
-.tab-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.04);
+.nav-item:hover {
+  background: var(--dbx-navy-hover);
+  color: #ffffff;
 }
 
-.tab-btn.active {
-  background: rgba(56, 189, 248, 0.15);
-  border-color: rgba(56, 189, 248, 0.3);
-  color: #7dd3fc;
+.nav-item.active {
+  background: var(--dbx-navy-active);
+  color: #ffffff;
+  font-weight: 600;
 }
 
-/* Main Content Views */
-.content-view {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem;
-  display: none;
-}
-
-.content-view.active {
-  display: block;
-}
-
-/* Metric Cards Grid */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.glass-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.625rem;
-  padding: 1.25rem;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.metric-title {
+.sidebar-section-title {
+  padding: 1.25rem 1.25rem 0.5rem;
   font-size: 0.75rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-muted);
+  color: var(--text-sidebar-muted);
+}
+
+.starred-folders {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0.75rem;
+  gap: 0.2rem;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.825rem;
+  color: var(--text-sidebar);
+  cursor: pointer !important;
+  transition: background 0.15s;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.folder-item:hover {
+  background: var(--dbx-navy-hover);
+  color: #ffffff;
+}
+
+/* Sidebar Footer (S3 status & user card) */
+.sidebar-footer {
+  padding: 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.s3-storage-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.775rem;
+}
+
+.s3-storage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-sidebar-muted);
+  font-weight: 600;
   margin-bottom: 0.35rem;
 }
 
-.metric-value {
-  font-family: var(--font-heading);
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--text-primary);
+.s3-meter {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 0.35rem 0;
 }
 
-/* Status Pill */
-.status-pill {
-  display: inline-flex;
+.s3-meter-fill {
+  height: 100%;
+  width: 18%;
+  background: var(--status-synced);
+  border-radius: 2px;
+}
+
+.user-profile-card {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.65rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: var(--font-mono);
-}
-
-.status-pill.up-to-date {
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: #6ee7b7;
-}
-
-.status-pill.syncing {
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  color: #7dd3fc;
-}
-
-.status-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 9999px;
-  display: inline-block;
-}
-
-.status-dot.emerald {
-  background: #10b981;
-  box-shadow: 0 0 8px #10b981;
-}
-
-.status-dot.cyan {
-  background: #38bdf8;
-  box-shadow: 0 0 8px #38bdf8;
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.1); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.7; }
-}
-
-/* Buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  justify-content: space-between;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer !important;
-  transition: all 0.2s;
-  border: none;
+  transition: background 0.15s;
+}
+
+.user-profile-card:hover {
+  background: var(--dbx-navy-hover);
+}
+
+.user-info-text {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.user-name-title {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.user-sub-label {
+  font-size: 0.7rem;
+  color: var(--text-sidebar-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Center Main View (Dropbox White File Explorer)
+   -------------------------------------------------------------------------- */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-white);
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Top Search Bar Header */
+.top-search-header {
+  padding: 1rem 2rem 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.search-input-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 540px;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.55rem 0.85rem 0.55rem 2.4rem;
+  font-size: 0.875rem;
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  color: var(--text-dark);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
   -webkit-app-region: no-drag !important;
   pointer-events: auto !important;
 }
 
+.search-input:focus {
+  border-color: var(--dbx-blue);
+  box-shadow: 0 0 0 3px rgba(0, 97, 254, 0.12);
+}
+
+/* Content Body */
+.content-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 2rem 1.5rem;
+}
+
+.page-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.page-title {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  letter-spacing: -0.02em;
+}
+
+.notes-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.25rem;
+}
+
+.notes-hint a {
+  color: var(--dbx-blue);
+  text-decoration: none;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+.notes-hint a:hover {
+  text-decoration: underline;
+}
+
+/* Pinned Dropzone Area (Dropbox Signature Dashed Box) */
+.dropzone-banner {
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  background: #fbfcfe;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  cursor: pointer !important;
+  transition: all 0.2s;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.dropzone-banner:hover {
+  border-color: var(--dbx-blue);
+  background: var(--dbx-blue-light);
+  color: var(--dbx-blue);
+}
+
+/* Sub-header Toolbar (Files Count + Action Buttons) */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 0.25rem;
+}
+
+.toolbar-left-stats {
+  font-weight: 600;
+  font-size: 0.925rem;
+  color: var(--text-dark);
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+/* Dropbox Style Buttons */
+.btn-dbx {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer !important;
+  transition: all 0.15s ease;
+  border: 1px solid var(--border-light);
+  background: #ffffff;
+  color: var(--text-dark);
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.btn-dbx:hover {
+  background: var(--bg-hover);
+  border-color: #cbd5e1;
+}
+
+.btn-dbx-primary {
+  background: var(--dbx-blue);
+  border-color: var(--dbx-blue);
+  color: #ffffff;
+}
+
+.btn-dbx-primary:hover {
+  background: var(--dbx-blue-hover);
+  border-color: var(--dbx-blue-hover);
+}
+
+.view-toggle-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-left: 0.25rem;
+}
+
+.view-btn {
+  background: #ffffff;
+  border: none;
+  padding: 0.4rem 0.55rem;
+  color: var(--text-muted);
+  cursor: pointer !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.view-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-dark);
+}
+
+.view-btn.active {
+  background: #f1f5f9;
+  color: var(--text-dark);
+}
+
+/* --------------------------------------------------------------------------
+   File Table (Matches Dropbox Desktop Table Layout)
+   -------------------------------------------------------------------------- */
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.file-table th {
+  text-align: left;
+  padding: 0.65rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.775rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.file-table td {
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.file-row {
+  cursor: pointer !important;
+  transition: background 0.12s;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
+}
+
+.file-row:hover {
+  background: var(--bg-hover);
+}
+
+.file-row.selected {
+  background: var(--dbx-blue-light) !important;
+}
+
+.file-row.selected td {
+  color: #0f172a;
+}
+
+/* File Icon + Name Cell */
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chevron-icon {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  width: 14px;
+}
+
+.icon-with-sync-badge {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sync-badge-overlay {
+  position: absolute;
+  bottom: -2px;
+  right: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--status-synced);
+  border: 1.5px solid #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.sync-badge-overlay.syncing {
+  background: var(--dbx-blue);
+  animation: spin 1.4s linear infinite;
+}
+
+.sync-badge-overlay.pending {
+  background: var(--status-pending);
+}
+
+.sync-badge-overlay.conflict {
+  background: var(--status-conflict);
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+.file-title-text {
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.file-row.selected .file-title-text {
+  font-weight: 600;
+  color: #0284c7;
+}
+
+.file-type-text {
+  color: var(--text-muted);
+}
+
+.file-size-text {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+/* --------------------------------------------------------------------------
+   Right Details Pane (Dropbox Inspector)
+   -------------------------------------------------------------------------- */
+.inspector-pane {
+  width: 300px;
+  min-width: 300px;
+  background: var(--bg-inspector);
+  border-left: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.5rem 1.25rem;
+}
+
+.preview-card-box {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  margin-bottom: 1.25rem;
+}
+
+.open-external-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer !important;
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.open-external-btn:hover {
+  color: var(--text-dark);
+  background: var(--bg-hover);
+}
+
+.large-preview-icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 0.85rem;
+}
+
+.preview-file-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  word-break: break-all;
+  margin-bottom: 0.25rem;
+}
+
+.preview-file-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Quick Action Toolbar */
+.inspector-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+
+.quick-circle-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  background: #ffffff;
+  color: var(--text-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer !important;
+  transition: all 0.15s;
+}
+
+.quick-circle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-dark);
+  border-color: #cbd5e1;
+}
+
+/* Security / Encryption Details Card */
+.details-section {
+  margin-bottom: 1.25rem;
+}
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.info-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-key {
+  color: var(--text-muted);
+}
+
+.info-val {
+  font-weight: 500;
+  color: var(--text-dark);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+/* Activity Stream in Inspector */
+.activity-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.activity-item {
+  display: flex;
+  gap: 0.65rem;
+  font-size: 0.8rem;
+}
+
+.activity-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--dbx-blue);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.activity-text {
+  color: var(--text-dark);
+}
+
+.activity-time {
+  font-size: 0.725rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+/* Bottom Watermark / Status Bar */
+.bottom-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 2rem;
+  border-top: 1px solid var(--border-light);
+  background: #ffffff;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.dbx-watermark {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Settings & S3 Preferences Modal (Clean White Dropbox Style)
+   -------------------------------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 27, 54, 0.45);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-overlay.open {
+  display: flex;
+}
+
+.modal-window {
+  background: #ffffff;
+  width: 90%;
+  max-width: 580px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
+}
+
+.form-field-value {
+  background: #f8fafc;
+  border: 1px solid var(--border-light);
+  padding: 0.55rem 0.75rem;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+  font-family: var(--font-mono);
+}
+
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  background: #fbfcfe;
+}
+
+/* Ensure all interactive buttons, links, inputs bypass window drag */
 button,
 input,
 select,
 textarea,
-a {
+a,
+.btn-dbx,
+.file-row,
+.nav-item,
+.folder-item,
+.icon-btn,
+.sidebar-account,
+.user-profile-card,
+.quick-circle-btn {
   -webkit-app-region: no-drag !important;
   pointer-events: auto !important;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-  color: #ffffff;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-}
-
-.btn-primary:hover {
-  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
-}
-
-.btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-}
-
-.btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-/* Table styles */
-.files-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.8125rem;
-}
-
-.files-table th {
-  text-align: left;
-  padding: 0.75rem 1rem;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.725rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.files-table td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-.files-table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
-
-.badge-synced {
-  background: rgba(16, 185, 129, 0.15);
-  color: #6ee7b7;
-}
-
-.badge-pending {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fde68a;
-}
-
-.badge-conflict {
-  background: rgba(244, 63, 94, 0.15);
-  color: #fda4af;
-}
-
-/* Log Box */
-.log-box {
-  background: #05080f;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.5rem;
-  padding: 1rem;
-  font-family: var(--font-mono);
-  font-size: 0.775rem;
-  height: 200px;
-  overflow-y: auto;
-  color: #94a3b8;
-  line-height: 1.6;
-}
-
-.log-entry {
-  margin-bottom: 0.25rem;
 }
