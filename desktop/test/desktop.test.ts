@@ -130,6 +130,42 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(lib).toContain("CloseRequested");
     expect(lib).toContain("prevent_close");
   });
+
+  it("has native file operations (open, reveal in finder, delete to trash, create folder, upload)", () => {
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const html = readFileSync(htmlPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(commands).toContain("open_file");
+    expect(commands).toContain("reveal_in_finder");
+    expect(commands).toContain("delete_file");
+    expect(commands).toContain("create_folder");
+    expect(commands).toContain("pick_and_import_files");
+
+    expect(lib).toContain("commands::open_file");
+    expect(lib).toContain("commands::reveal_in_finder");
+    expect(lib).toContain("commands::delete_file");
+    expect(lib).toContain("commands::create_folder");
+    expect(lib).toContain("commands::pick_and_import_files");
+
+    expect(html).toContain("upload-files-btn");
+    expect(html).toContain("new-folder-btn");
+    expect(html).toContain("inspector-open-file-btn");
+    expect(html).toContain("inspector-reveal-btn");
+    expect(html).toContain("inspector-delete-btn");
+
+    expect(mainTs).toContain("pick_and_import_files");
+    expect(mainTs).toContain("create_folder");
+    expect(mainTs).toContain("open_file");
+    expect(mainTs).toContain("reveal_in_finder");
+    expect(mainTs).toContain("delete_file");
+  });
 });
 
 

@@ -398,7 +398,13 @@ function renderFileTable(files) {
       }
     });
     row.addEventListener("dblclick", () => {
-      tauriInvoke("open_sync_folder");
+      const idx = Number(row.getAttribute("data-idx"));
+      const item = files[idx];
+      if (item) {
+        tauriInvoke("open_file", { path: item.path }).catch(() => {
+          tauriInvoke("open_sync_folder");
+        });
+      }
     });
   });
 }
@@ -413,6 +419,8 @@ function selectFile(file) {
   const metaEl = document.getElementById("inspector-file-meta");
   const iconContainer = document.getElementById("inspector-icon-container");
   const s3Target = document.getElementById("inspector-s3-target");
+  const hashEl = document.getElementById("inspector-hash");
+  const blobEl = document.getElementById("inspector-blob-id");
   const activityTitle = document.getElementById("activity-title");
   const activityTime = document.getElementById("activity-time");
   if (nameEl)
@@ -424,12 +432,21 @@ function selectFile(file) {
   if (iconContainer) {
     iconContainer.innerHTML = typeInfo.iconSvg.replace('width="20" height="20"', 'width="56" height="56"');
   }
+  if (hashEl) {
+    hashEl.textContent = file.hash ? `${file.hash.slice(0, 16)}...` : "Verified SHA-256";
+    hashEl.title = file.hash || "";
+  }
+  if (blobEl) {
+    blobEl.textContent = file.blob_id ? `${file.blob_id.slice(0, 16)}...` : "Encrypted blob";
+    blobEl.title = file.blob_id ? `blobs/${file.blob_id}` : "";
+  }
   if (s3Target) {
     const bucket = currentVaultStatus?.bucket || "my-box";
-    s3Target.textContent = `s3://${bucket}/blobs/...`;
+    s3Target.textContent = file.blob_id ? `s3://${bucket}/blobs/${file.blob_id.slice(0, 12)}...` : `s3://${bucket}/${file.path}`;
+    s3Target.title = file.blob_id ? `s3://${bucket}/blobs/${file.blob_id}` : "";
   }
   if (activityTitle) {
-    activityTitle.textContent = `Synced ${file.path}`;
+    activityTitle.textContent = `Selected ${file.path}`;
   }
   if (activityTime) {
     activityTime.textContent = `Encrypted & stored zero-knowledge in S3`;
@@ -484,25 +501,22 @@ async function refreshVaultStatus() {
 }
 async function refreshFilesList() {
   try {
+    const hasTauri = typeof window !== "undefined" && (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__));
     let files = await tauriInvoke("list_synced_files");
-    if (files.length === 0) {
+    if (!hasTauri && files.length === 0) {
       files = [
-        { path: "!!Photoshops", size: 0, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "3D printer parts", size: 0, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "2019_05_10_08_13_48.mp4", size: 14200000, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "2019_05_11_14_22_18.mp4", size: 8400000, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "2019_05_11_14_24_49.mp4", size: 6300000, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "2019_05_11_14_27_50.mp4", size: 9100000, status: "synced", mtime_ns: Date.now() * 1e6 },
         { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1e6 },
         { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1e6 }
       ];
     }
     allFiles = files;
     renderFileTable(allFiles);
-    if (!selectedFile && allFiles.length > 4) {
-      selectFile(allFiles[4]);
-    } else if (!selectedFile && allFiles.length > 0) {
+    if (!selectedFile && allFiles.length > 0) {
       selectFile(allFiles[0]);
+    } else if (selectedFile) {
+      const match = allFiles.find((f) => f.path === selectedFile?.path);
+      if (match)
+        selectFile(match);
     }
   } catch (err) {
     console.error("Failed to list files:", err);
@@ -565,13 +579,145 @@ function initDesktopApp() {
       console.error("Open folder error:", err);
     }
   });
-  document.getElementById("inspector-open-external")?.addEventListener("click", async (e) => {
+  document.getElementById("upload-files-btn")?.addEventListener("click", async (e) => {
     e.preventDefault();
     try {
-      await tauriInvoke("open_sync_folder");
+      const imported = await tauriInvoke("pick_and_import_files");
+      if (imported && imported.length > 0) {
+        const activityTitle = document.getElementById("activity-title");
+        const activityTime = document.getElementById("activity-time");
+        if (activityTitle)
+          activityTitle.textContent = `⚔️ Imported ${imported.length} file(s)`;
+        if (activityTime)
+          activityTime.textContent = `Sealing & encrypting into ~/RenegadeBox`;
+        await refreshFilesList();
+        await refreshVaultStatus();
+      }
     } catch (err) {
-      console.error("Open error:", err);
+      console.error("Upload error:", err);
     }
+  });
+  document.getElementById("dropzone-box")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+      const imported = await tauriInvoke("pick_and_import_files");
+      if (imported && imported.length > 0) {
+        await refreshFilesList();
+        await refreshVaultStatus();
+      }
+    } catch (err) {
+      console.error("Dropzone upload error:", err);
+    }
+  });
+  document.getElementById("new-folder-btn")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    const folderName = prompt("Enter new folder name (e.g. Documents, Loot):");
+    if (folderName && folderName.trim()) {
+      try {
+        await tauriInvoke("create_folder", { relativePath: folderName.trim() });
+        const activityTitle = document.getElementById("activity-title");
+        if (activityTitle)
+          activityTitle.textContent = `\uD83D\uDCC1 Created folder: ${folderName.trim()}`;
+        await refreshFilesList();
+      } catch (err) {
+        alert("Could not create folder: " + err);
+      }
+    }
+  });
+  async function openCurrentFile() {
+    if (!selectedFile)
+      return;
+    try {
+      await tauriInvoke("open_file", { path: selectedFile.path });
+    } catch (err) {
+      console.warn("Could not open file directly, revealing folder:", err);
+      await tauriInvoke("open_sync_folder");
+    }
+  }
+  async function revealCurrentFile() {
+    if (!selectedFile)
+      return;
+    try {
+      await tauriInvoke("reveal_in_finder", { path: selectedFile.path });
+    } catch (err) {
+      console.warn("Could not reveal file directly, opening folder:", err);
+      await tauriInvoke("open_sync_folder");
+    }
+  }
+  document.getElementById("inspector-open-file-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    openCurrentFile();
+  });
+  document.getElementById("inspector-open-external")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    openCurrentFile();
+  });
+  document.getElementById("inspector-reveal-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    revealCurrentFile();
+  });
+  document.getElementById("action-reveal-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    revealCurrentFile();
+  });
+  document.getElementById("inspector-delete-btn")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (!selectedFile)
+      return;
+    const confirmDel = confirm(`Move "${selectedFile.path}" to macOS Trash?
+
+This will also remove it from your S3 vault.`);
+    if (confirmDel) {
+      try {
+        await tauriInvoke("delete_file", { path: selectedFile.path });
+        const activityTitle = document.getElementById("activity-title");
+        const activityTime = document.getElementById("activity-time");
+        if (activityTitle)
+          activityTitle.textContent = `\uD83D\uDDD1️ Moved to trash: ${selectedFile.path}`;
+        if (activityTime)
+          activityTime.textContent = "Syncing deletion with S3 vault";
+        selectedFile = null;
+        await refreshFilesList();
+        await refreshVaultStatus();
+      } catch (err) {
+        alert("Failed to delete file: " + err);
+      }
+    }
+  });
+  document.getElementById("action-copy-blob-btn")?.addEventListener("click", () => {
+    if (selectedFile?.blob_id) {
+      navigator.clipboard?.writeText(selectedFile.blob_id);
+      const activityTitle = document.getElementById("activity-title");
+      if (activityTitle)
+        activityTitle.textContent = `Copied S3 Blob ID: ${selectedFile.blob_id.slice(0, 16)}...`;
+    }
+  });
+  document.getElementById("nav-all-files")?.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    document.getElementById("nav-all-files")?.classList.add("active");
+    renderFileTable(allFiles);
+  });
+  document.getElementById("nav-starred")?.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    document.getElementById("nav-starred")?.classList.add("active");
+    renderFileTable(allFiles.slice(0, 2));
+  });
+  document.getElementById("nav-activity")?.addEventListener("click", () => {
+    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+    document.getElementById("nav-activity")?.classList.add("active");
+    const activityTitle = document.getElementById("activity-title");
+    const activityTime = document.getElementById("activity-time");
+    if (activityTitle)
+      activityTitle.textContent = "Captain's Log: Live Watcher Active";
+    if (activityTime)
+      activityTime.textContent = `Connected to s3://${currentVaultStatus?.bucket || "vault"}`;
+  });
+  document.querySelectorAll(".folder-item").forEach((f) => {
+    f.addEventListener("click", () => {
+      const folderName = f.querySelector("span")?.textContent?.trim().toLowerCase() || "";
+      const filtered = allFiles.filter((file) => file.path.toLowerCase().includes(folderName));
+      renderFileTable(filtered.length > 0 ? filtered : allFiles);
+    });
   });
   document.getElementById("nav-settings")?.addEventListener("click", openSettingsModal);
   document.getElementById("user-profile-btn")?.addEventListener("click", openSettingsModal);

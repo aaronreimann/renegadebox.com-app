@@ -128,7 +128,12 @@ pub fn run() {
             commands::trigger_sync,
             commands::list_synced_files,
             commands::open_sync_folder,
-            commands::open_dashboard
+            commands::open_dashboard,
+            commands::open_file,
+            commands::reveal_in_finder,
+            commands::delete_file,
+            commands::create_folder,
+            commands::pick_and_import_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running renegadebox desktop application");
