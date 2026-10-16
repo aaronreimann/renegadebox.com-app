@@ -7,7 +7,9 @@ import {
   renderSettings,
   renderPopoverSettings,
   renderSetup,
+  renderDesktopApp,
 } from "../src/lib/views";
+import { categorizeFile } from "../src/lib/icons";
 import { validateSetupStep, PROVIDERS, providerLabel, type SetupValues } from "../src/lib/setup";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "../src/lib/actions";
 import { mockInvoke } from "../src/lib/ipc";
@@ -377,5 +379,117 @@ describe("browser mock mode", () => {
     const route = await mockInvoke<RouteDecision>("test_ai_routing", { samplePath: "invoice.pdf" }, "ok");
     expect(route.destination_folder).toBe("Finance/Invoices");
     expect(route.confidence).toBeGreaterThan(0.5);
+  });
+});
+
+describe("file categorization", () => {
+  it("categorizes file extensions accurately", () => {
+    expect(categorizeFile("photo.png")).toBe("images");
+    expect(categorizeFile("avatar.jpg")).toBe("images");
+    expect(categorizeFile("main.rs")).toBe("code");
+    expect(categorizeFile("app.tsx")).toBe("code");
+    expect(categorizeFile("archive.zip")).toBe("archives");
+    expect(categorizeFile("bundle.tar.gz")).toBe("archives");
+    expect(categorizeFile("report.pdf")).toBe("documents");
+    expect(categorizeFile("notes.txt")).toBe("documents");
+  });
+});
+
+describe("desktop app layout and polish", () => {
+  const sampleRecent: RecentFile[] = [
+    { path: "Finance/Tax_Return.pdf", name: "Tax_Return.pdf", folder: "Finance", modified_ms: NOW - 60_000 },
+    { path: "Photos/Family.jpg", name: "Family.jpg", folder: "Photos", modified_ms: NOW - 120_000 },
+    { path: "src/main.rs", name: "main.rs", folder: "src", modified_ms: NOW - 180_000 },
+    { path: "backup.zip", name: "backup.zip", folder: "", modified_ms: NOW - 240_000 },
+  ];
+
+  it("renders wide layout with search bar, keyboard badges, and category pills", () => {
+    const html = renderDesktopApp({
+      activeTab: "files",
+      overview: base,
+      recent: sampleRecent,
+      conflicts: [],
+      settings: { status, autostart: true, ignored: [] },
+      theme: "dark",
+      now: NOW,
+    });
+
+    expect(html).toContain('id="file-search-input"');
+    expect(html).toContain("⌘F");
+    expect(html).toContain("⌘1");
+    expect(html).toContain("⌘2");
+    expect(html).toContain("⌘3");
+    expect(html).toContain("⌘4");
+    expect(html).toContain("storage-meter-track");
+    expect(html).toContain("data-action=\"copy-path\"");
+    expect(html).toContain("Double-click to open");
+    expect(html).toContain('data-cat="documents"');
+    expect(html).toContain('data-cat="images"');
+    expect(html).toContain('data-cat="code"');
+    expect(html).toContain('data-cat="archives"');
+  });
+
+  it("filters files dynamically based on search query", () => {
+    const html = renderDesktopApp({
+      activeTab: "files",
+      overview: base,
+      recent: sampleRecent,
+      conflicts: [],
+      settings: { status, autostart: true, ignored: [] },
+      theme: "light",
+      searchQuery: "Tax",
+      now: NOW,
+    });
+
+    expect(html).toContain("Tax_Return.pdf");
+    expect(html).not.toContain("Family.jpg");
+    expect(html).not.toContain("main.rs");
+  });
+
+  it("filters files by category pills", () => {
+    const html = renderDesktopApp({
+      activeTab: "files",
+      overview: base,
+      recent: sampleRecent,
+      conflicts: [],
+      settings: { status, autostart: true, ignored: [] },
+      theme: "dark",
+      activeCategory: "code",
+      now: NOW,
+    });
+
+    expect(html).toContain("main.rs");
+    expect(html).not.toContain("Tax_Return.pdf");
+    expect(html).not.toContain("Family.jpg");
+    expect(html).not.toContain("backup.zip");
+  });
+
+  it("shows pulsing storage bar when sync is active", () => {
+    const html = renderDesktopApp({
+      activeTab: "files",
+      overview: { ...base, syncing: true, pending: 3 },
+      recent: sampleRecent,
+      conflicts: [],
+      settings: { status: { ...status, total_bytes: 1024 * 1024 * 5 }, autostart: true, ignored: [] },
+      theme: "system",
+      now: NOW,
+    });
+
+    expect(html).toContain("storage-meter-fill pulsing");
+  });
+
+  it("renders notification settings in settings panel", () => {
+    const html = renderSettings({
+      status,
+      autostart: true,
+      ignored: [],
+      notifyConflicts: true,
+      notifySync: false,
+    });
+
+    expect(html).toContain('id="notify-conflicts-toggle"');
+    expect(html).toContain('id="notify-sync-toggle"');
+    expect(html).toMatch(/id="notify-conflicts-toggle"[^>]*checked/);
+    expect(html).not.toMatch(/id="notify-sync-toggle"[^>]*checked/);
   });
 });

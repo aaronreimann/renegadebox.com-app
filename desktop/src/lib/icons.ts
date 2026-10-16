@@ -30,11 +30,30 @@ export const icons = {
   sun: (s?: number) => svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>', s),
   moon: (s?: number) => svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>', s),
   monitor: (s?: number) => svg('<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>', s),
+  search: (s?: number) => svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>', s),
+  clear: (s?: number) => svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', s),
+  copy: (s?: number) => svg('<rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', s),
+  code: (s?: number) => svg('<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>', s),
+  archive: (s?: number) => svg('<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>', s),
+  bell: (s?: number) => svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>', s),
 };
 
-export function fileIcon(name: string): string {
+export type FileCategory = "all" | "documents" | "images" | "code" | "archives";
+
+export function categorizeFile(name: string): FileCategory {
   const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
-  if (["jpg", "jpeg", "png", "gif", "heic", "webp", "tiff", "svg"].includes(ext)) return icons.image(18);
+  if (["jpg", "jpeg", "png", "gif", "heic", "webp", "tiff", "svg", "bmp", "ico"].includes(ext)) return "images";
+  if (["rs", "ts", "js", "jsx", "tsx", "py", "json", "html", "css", "toml", "sh", "sql", "yaml", "yml", "c", "cpp", "h"].includes(ext)) return "code";
+  if (["zip", "tar", "gz", "7z", "dmg", "rar", "pkg"].includes(ext)) return "archives";
+  return "documents";
+}
+
+export function fileIcon(name: string): string {
+  const cat = categorizeFile(name);
+  if (cat === "images") return icons.image(18);
+  if (cat === "code") return icons.code(18);
+  if (cat === "archives") return icons.archive(18);
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
   if (["xls", "xlsx", "csv", "numbers"].includes(ext)) return icons.sheet(18);
   if (["doc", "docx", "pdf", "txt", "md", "pages", "rtf"].includes(ext)) return icons.doc(18);
   return icons.file(18);

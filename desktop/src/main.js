@@ -445,12 +445,33 @@ Photos and media go to Media/Photos`,
     sparkles: (s) => svg('<path d="m12 3 1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/>', s),
     sun: (s) => svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>', s),
     moon: (s) => svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>', s),
-    monitor: (s) => svg('<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>', s)
+    monitor: (s) => svg('<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>', s),
+    search: (s) => svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>', s),
+    clear: (s) => svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>', s),
+    copy: (s) => svg('<rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>', s),
+    code: (s) => svg('<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>', s),
+    archive: (s) => svg('<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>', s),
+    bell: (s) => svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>', s)
   };
-  function fileIcon(name) {
+  function categorizeFile(name) {
     const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
-    if (["jpg", "jpeg", "png", "gif", "heic", "webp", "tiff", "svg"].includes(ext))
+    if (["jpg", "jpeg", "png", "gif", "heic", "webp", "tiff", "svg", "bmp", "ico"].includes(ext))
+      return "images";
+    if (["rs", "ts", "js", "jsx", "tsx", "py", "json", "html", "css", "toml", "sh", "sql", "yaml", "yml", "c", "cpp", "h"].includes(ext))
+      return "code";
+    if (["zip", "tar", "gz", "7z", "dmg", "rar", "pkg"].includes(ext))
+      return "archives";
+    return "documents";
+  }
+  function fileIcon(name) {
+    const cat = categorizeFile(name);
+    if (cat === "images")
       return icons.image(18);
+    if (cat === "code")
+      return icons.code(18);
+    if (cat === "archives")
+      return icons.archive(18);
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
     if (["xls", "xlsx", "csv", "numbers"].includes(ext))
       return icons.sheet(18);
     if (["doc", "docx", "pdf", "txt", "md", "pages", "rtf"].includes(ext))
@@ -803,7 +824,7 @@ Photos and media go to Media/Photos`,
       </div>
     </section>`;
   }
-  function renderSettings({ status, autostart, ignored }, initialTab = "general") {
+  function renderSettings({ status, autostart, ignored, notifyConflicts = true, notifySync = false }, initialTab = "general") {
     const kind = keyStoreKind(status.key_store);
     const row = (label, value) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
     const folder = status.folder ?? "Not set up";
@@ -872,6 +893,26 @@ Photos and media go to Media/Photos`,
               <button class="theme-btn" data-theme="dark" type="button" title="Dark theme">
                 ${icons.moon(14)}<span>Dark</span>
               </button>
+            </div>
+          </div>
+          <div class="field" style="margin-top: 14px;">
+            <span class="field-label">Notifications</span>
+            <span class="field-hint">Control system alerts for sync activity and file conflicts.</span>
+            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+              <label class="switch-row compact">
+                <span>
+                  <span class="field-label" style="font-size:12px;">Alert on file conflicts</span>
+                  <span class="field-hint">Show a desktop notification when concurrent edits conflict.</span>
+                </span>
+                <input id="notify-conflicts-toggle" class="switch" type="checkbox" role="switch"${notifyConflicts !== false ? " checked" : ""} />
+              </label>
+              <label class="switch-row compact">
+                <span>
+                  <span class="field-label" style="font-size:12px;">Alert on sync completion</span>
+                  <span class="field-hint">Show a notification when large sync batches finish.</span>
+                </span>
+                <input id="notify-sync-toggle" class="switch" type="checkbox" role="switch"${notifySync ? " checked" : ""} />
+              </label>
             </div>
           </div>
         </section>
@@ -1148,17 +1189,29 @@ Photos and media go to Media/Photos`,
       </form>
     </main>`;
   }
-  function renderDesktopApp({ activeTab, overview, recent, conflicts, settings, theme, now }) {
+  function renderDesktopApp({
+    activeTab,
+    overview,
+    recent,
+    conflicts,
+    settings,
+    theme,
+    searchQuery = "",
+    activeCategory = "all",
+    now
+  }) {
     const st = describeStatus(overview);
     const pauseLabel = overview.paused ? "Resume" : "Pause";
-    const totalSize = settings.status.total_bytes ? ` · ${formatBytes(settings.status.total_bytes)}` : "";
+    const totalBytes = settings.status.total_bytes ?? 0;
+    const totalSize = totalBytes ? ` · ${formatBytes(totalBytes)}` : "";
     const filesCount = settings.status.total_files ? `${settings.status.total_files} files${totalSize}` : "No files synced yet";
+    const storageMeterWidth = totalBytes > 0 ? Math.min(100, Math.max(12, Math.round(Math.min(100, totalBytes / (50 * 1024 * 1024) * 100)))) : 6;
     const statusClass = `status-${st.kind}`;
     const navItems = [
-      { id: "files", label: "Recent Files", icon: icons.doc(16), count: recent.length > 0 ? recent.length : undefined },
-      { id: "conflicts", label: "Activity & Conflicts", icon: icons.sync(16), count: conflicts.length > 0 ? conflicts.length : undefined, isDanger: conflicts.length > 0 },
-      { id: "routing", label: "Smart Routing", icon: icons.sparkles(16) },
-      { id: "settings", label: "Settings", icon: icons.gear(16) }
+      { id: "files", label: "Recent Files", icon: icons.doc(16), shortcut: "⌘1", count: recent.length > 0 ? recent.length : undefined },
+      { id: "conflicts", label: "Activity & Conflicts", icon: icons.sync(16), shortcut: "⌘2", count: conflicts.length > 0 ? conflicts.length : undefined, isDanger: conflicts.length > 0 },
+      { id: "routing", label: "Smart Routing", icon: icons.sparkles(16), shortcut: "⌘3" },
+      { id: "settings", label: "Settings", icon: icons.gear(16), shortcut: "⌘4" }
     ];
     const navHtml = navItems.map((item) => `
     <button class="sidebar-nav-item${activeTab === item.id ? " active" : ""}" type="button" data-desktop-tab="${item.id}" id="nav-tab-${item.id}">
@@ -1166,7 +1219,10 @@ Photos and media go to Media/Photos`,
         ${item.icon}
         <span>${escapeHtml(item.label)}</span>
       </span>
-      ${item.count !== undefined ? `<span class="sidebar-badge${item.isDanger ? " danger" : ""}">${item.count}</span>` : ""}
+      <span class="sidebar-nav-trailing">
+        ${item.count !== undefined ? `<span class="sidebar-badge${item.isDanger ? " danger" : ""}">${item.count}</span>` : ""}
+        <kbd class="sidebar-kbd">${item.shortcut}</kbd>
+      </span>
     </button>`).join("");
     let mainContent = "";
     if (activeTab === "files") {
@@ -1180,52 +1236,94 @@ Photos and media go to Media/Photos`,
       } else if (recent.length === 0) {
         body = `<div class="empty"><p>Files you add to your RenegadeBox folder will show up here.</p></div>`;
       } else {
-        const rows = recent.map((f, i) => {
-          const where = f.folder ? f.folder.split("/").pop() : "RenegadeBox";
-          return `
-          <tr class="file-table-row" data-index="${i}">
-            <td>
-              <div class="file-name-cell">
-                <span class="file-icon">${fileIcon(f.name)}</span>
-                <span title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
-              </div>
-            </td>
-            <td><span class="file-meta-folder">${escapeHtml(where)}</span></td>
-            <td><span class="file-meta-time">${escapeHtml(relativeTime(f.modified_ms, now))}</span></td>
-            <td>
-              <div class="file-actions-cell">
-                <button class="btn" type="button" data-action="open" data-index="${i}">Open</button>
-                <button class="btn" type="button" data-action="reveal" data-index="${i}">Show in Finder</button>
-              </div>
-            </td>
-          </tr>`;
-        }).join("");
-        body = `
-        <table class="file-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Location</th>
-              <th>Modified</th>
-              <th style="text-align: right;">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>`;
+        const q = searchQuery.trim().toLowerCase();
+        const currentCat = activeCategory;
+        const filtered = recent.map((f, origIndex) => ({ f, origIndex })).filter(({ f }) => {
+          if (currentCat !== "all" && categorizeFile(f.name) !== currentCat)
+            return false;
+          if (q) {
+            const nameMatch = f.name.toLowerCase().includes(q);
+            const folderMatch = f.folder ? f.folder.toLowerCase().includes(q) : false;
+            if (!nameMatch && !folderMatch)
+              return false;
+          }
+          return true;
+        });
+        if (filtered.length === 0) {
+          body = `
+          <div class="empty">
+            <p>No files match "${escapeHtml(searchQuery || currentCat)}".</p>
+            <button id="clear-search-btn" class="btn" type="button">Reset filters</button>
+          </div>`;
+        } else {
+          const rows = filtered.map(({ f, origIndex }) => {
+            const where = f.folder ? f.folder.split("/").pop() : "RenegadeBox";
+            return `
+            <tr class="file-table-row" data-index="${origIndex}" data-path="${escapeHtml(f.path)}" title="Double-click to open">
+              <td>
+                <div class="file-name-cell">
+                  <span class="file-status-glyph" title="Up to date">${icons.check(13)}</span>
+                  <span class="file-icon">${fileIcon(f.name)}</span>
+                  <span class="file-name-text" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+                </div>
+              </td>
+              <td><span class="file-meta-folder">${escapeHtml(where)}</span></td>
+              <td><span class="file-meta-time">${escapeHtml(relativeTime(f.modified_ms, now))}</span></td>
+              <td>
+                <div class="file-actions-cell">
+                  <button class="btn icon-only-btn" type="button" data-action="copy-path" data-index="${origIndex}" title="Copy path to clipboard">${icons.copy(13)}</button>
+                  <button class="btn" type="button" data-action="open" data-index="${origIndex}">Open</button>
+                  <button class="btn" type="button" data-action="reveal" data-index="${origIndex}">Show in Finder</button>
+                </div>
+              </td>
+            </tr>`;
+          }).join("");
+          body = `
+          <table class="file-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Modified</th>
+                <th style="text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>`;
+        }
       }
       mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
-          <h1 class="desktop-title">Recent Files</h1>
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h1 class="desktop-title">Recent Files</h1>
+            <span class="count-badge">${recent.length}</span>
+          </div>
           <p class="desktop-subtitle">Files synchronized on this Mac</p>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button id="open-folder-btn" class="btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
+        <div class="desktop-header-actions">
+          <button id="open-folder-btn" class="btn" type="button"${overview.initialized ? "" : " disabled"} title="Open RenegadeBox folder in Finder (⌘O)">${icons.folder()}<span>Open folder</span></button>
           <button id="pause-btn" class="btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
         </div>
       </header>
+
+      <div class="files-toolbar">
+        <div class="search-box">
+          <span class="search-glyph">${icons.search(14)}</span>
+          <input id="file-search-input" type="text" placeholder="Search recent files (⌘F)…" value="${escapeHtml(searchQuery)}" autocomplete="off" spellcheck="false" />
+          ${searchQuery ? `<button id="file-search-clear" class="clear-search-btn" type="button" aria-label="Clear search">${icons.clear(12)}</button>` : `<kbd class="kbd-badge">⌘F</kbd>`}
+        </div>
+        <div class="category-pills" role="radiogroup" aria-label="Filter by file type">
+          <button class="cat-pill${activeCategory === "all" ? " active" : ""}" data-cat="all" type="button">All</button>
+          <button class="cat-pill${activeCategory === "documents" ? " active" : ""}" data-cat="documents" type="button">Documents</button>
+          <button class="cat-pill${activeCategory === "images" ? " active" : ""}" data-cat="images" type="button">Images</button>
+          <button class="cat-pill${activeCategory === "code" ? " active" : ""}" data-cat="code" type="button">Code</button>
+          <button class="cat-pill${activeCategory === "archives" ? " active" : ""}" data-cat="archives" type="button">Archives</button>
+        </div>
+      </div>
+
       <div class="desktop-content-body">
         ${body}
       </div>`;
@@ -1263,9 +1361,12 @@ Photos and media go to Media/Photos`,
         <ul class="conflict-list">${rows}</ul>`;
       }
       mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
-          <h1 class="desktop-title">Activity & Conflicts</h1>
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h1 class="desktop-title">Activity & Conflicts</h1>
+            ${conflicts.length > 0 ? `<span class="count-badge danger">${conflicts.length}</span>` : ""}
+          </div>
           <p class="desktop-subtitle">Review sync conflicts and choose resolutions</p>
         </div>
       </header>
@@ -1274,8 +1375,8 @@ Photos and media go to Media/Photos`,
       </div>`;
     } else if (activeTab === "routing") {
       mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
           <h1 class="desktop-title">Smart Routing</h1>
           <p class="desktop-subtitle">Synology NAS volume detection and AI-assisted file categorization</p>
         </div>
@@ -1287,10 +1388,10 @@ Photos and media go to Media/Photos`,
       </div>`;
     } else if (activeTab === "settings") {
       mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
           <h1 class="desktop-title">Settings</h1>
-          <p class="desktop-subtitle">Preferences, storage, security, and smart routing</p>
+          <p class="desktop-subtitle">Preferences, storage, security, notifications, and smart routing</p>
         </div>
       </header>
       <div class="desktop-content-body">
@@ -1303,8 +1404,8 @@ Photos and media go to Media/Photos`,
     <div class="desktop-layout">
       <aside class="desktop-sidebar">
         <div class="desktop-sidebar-top">
-          <div class="brand-header">
-            <div class="brand-info">
+          <div class="brand-header" data-tauri-drag-region>
+            <div class="brand-info" data-tauri-drag-region>
               <span class="brand-icon">${icons.box(18)}</span>
               <span class="brand-title">RenegadeBox</span>
             </div>
@@ -1322,11 +1423,14 @@ Photos and media go to Media/Photos`,
           <div class="storage-card">
             <div class="storage-card-header">
               <span>Vault Storage</span>
-              <span>${escapeHtml(providerLabel(settings.status.endpoint))}</span>
+              <span class="storage-provider-pill">${escapeHtml(providerLabel(settings.status.endpoint))}</span>
             </div>
             <div class="storage-card-val" title="${escapeHtml(filesCount)}">${escapeHtml(filesCount)}</div>
+            <div class="storage-meter-track" title="Storage in use">
+              <div class="storage-meter-fill${overview.syncing ? " pulsing" : ""}" style="width: ${storageMeterWidth}%;"></div>
+            </div>
             <div class="sidebar-quick-actions">
-              <button id="sidebar-folder-btn" class="sidebar-quick-btn" type="button" title="Open RenegadeBox folder in Finder">
+              <button id="sidebar-folder-btn" class="sidebar-quick-btn" type="button" title="Open RenegadeBox folder in Finder (⌘O)">
                 ${icons.folder(12)}<span>Folder</span>
               </button>
               <button id="sidebar-pause-btn" class="sidebar-quick-btn" type="button" aria-pressed="${overview.paused}" title="${pauseLabel} syncing">
@@ -1352,6 +1456,7 @@ Photos and media go to Media/Photos`,
       <main class="desktop-main">
         ${mainContent}
       </main>
+      <div id="desktop-toast" class="desktop-toast" role="status" aria-live="polite" hidden></div>
     </div>`;
   }
 
@@ -1942,8 +2047,24 @@ ${rule}` : rule;
     settingsModel: null,
     aiConfig: undefined,
     theme: getTheme(),
+    searchQuery: "",
+    activeCategory: "all",
+    notifyConflicts: typeof localStorage !== "undefined" ? localStorage.getItem("renegadebox-notify-conflicts") !== "false" : true,
+    notifySync: typeof localStorage !== "undefined" ? localStorage.getItem("renegadebox-notify-sync") === "true" : false,
     busy: false
   };
+  var toastTimer = null;
+  function showToast(msg, durationMs = 2200) {
+    const t = $("desktop-toast");
+    if (!t)
+      return;
+    t.textContent = msg;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      t.hidden = true;
+    }, durationMs);
+  }
   async function refreshDesktop() {
     try {
       const [overview, recent, status, autostart, ignored, aiConfig] = await Promise.all([
@@ -1995,8 +2116,14 @@ ${rule}` : rule;
       overview: desktop.overview,
       recent: desktop.recent,
       conflicts: desktop.conflicts,
-      settings: desktop.settingsModel,
+      settings: {
+        ...desktop.settingsModel,
+        notifyConflicts: desktop.notifyConflicts,
+        notifySync: desktop.notifySync
+      },
       theme: desktop.theme,
+      searchQuery: desktop.searchQuery,
+      activeCategory: desktop.activeCategory,
       now: Date.now()
     });
     bindDesktopEvents();
@@ -2009,6 +2136,38 @@ ${rule}` : rule;
         const tab = btn.dataset.desktopTab;
         if (tab && desktop.activeTab !== tab) {
           desktop.activeTab = tab;
+          renderDesktopView();
+        }
+      });
+    });
+    const searchInput = $("file-search-input");
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        desktop.searchQuery = searchInput.value;
+        renderDesktopView();
+        const nextInput = $("file-search-input");
+        if (nextInput) {
+          nextInput.focus();
+          const len = nextInput.value.length;
+          nextInput.setSelectionRange(len, len);
+        }
+      });
+    }
+    $("file-search-clear")?.addEventListener("click", () => {
+      desktop.searchQuery = "";
+      renderDesktopView();
+      $("file-search-input")?.focus();
+    });
+    $("clear-search-btn")?.addEventListener("click", () => {
+      desktop.searchQuery = "";
+      desktop.activeCategory = "all";
+      renderDesktopView();
+    });
+    document.querySelectorAll(".cat-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cat = btn.dataset.cat;
+        if (cat && desktop.activeCategory !== cat) {
+          desktop.activeCategory = cat;
           renderDesktopView();
         }
       });
@@ -2028,6 +2187,18 @@ ${rule}` : rule;
         }
       });
     });
+    $("notify-conflicts-toggle")?.addEventListener("change", (e) => {
+      const checked = e.target.checked;
+      desktop.notifyConflicts = checked;
+      localStorage.setItem("renegadebox-notify-conflicts", String(checked));
+      showToast(checked ? "Conflict notifications enabled" : "Conflict notifications disabled");
+    });
+    $("notify-sync-toggle")?.addEventListener("change", (e) => {
+      const checked = e.target.checked;
+      desktop.notifySync = checked;
+      localStorage.setItem("renegadebox-notify-sync", String(checked));
+      showToast(checked ? "Sync notifications enabled" : "Sync notifications disabled");
+    });
     $("sidebar-folder-btn")?.addEventListener("click", () => void invoke2("open_sync_folder"));
     $("open-folder-btn")?.addEventListener("click", () => void invoke2("open_sync_folder"));
     $("start-setup-btn")?.addEventListener("click", () => void invoke2("open_setup"));
@@ -2038,8 +2209,10 @@ ${rule}` : rule;
       try {
         if (desktop.overview.paused) {
           await invoke2("resume_sync");
+          showToast("Sync resumed");
         } else {
           await invoke2("pause_sync");
+          showToast("Sync paused");
         }
         await refreshDesktop();
       } catch (e) {
@@ -2050,8 +2223,17 @@ ${rule}` : rule;
     };
     $("sidebar-pause-btn")?.addEventListener("click", togglePause);
     $("pause-btn")?.addEventListener("click", togglePause);
+    document.querySelectorAll("tr.file-table-row").forEach((row) => {
+      row.addEventListener("dblclick", () => {
+        const idx = Number(row.dataset.index);
+        const f = desktop.recent[idx];
+        if (f)
+          invoke2("open_file", { path: f.path });
+      });
+    });
     document.querySelectorAll("[data-action='open']").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
         const idx = Number(btn.dataset.index);
         const f = desktop.recent[idx];
         if (f)
@@ -2059,11 +2241,28 @@ ${rule}` : rule;
       });
     });
     document.querySelectorAll("[data-action='reveal']").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
         const idx = Number(btn.dataset.index);
         const f = desktop.recent[idx];
         if (f)
           invoke2("reveal_in_finder", { path: f.path });
+      });
+    });
+    document.querySelectorAll("[data-action='copy-path']").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.index);
+        const f = desktop.recent[idx];
+        if (f) {
+          const fullPath = f.folder ? `${f.folder}/${f.name}` : f.name;
+          try {
+            await navigator.clipboard.writeText(fullPath);
+            showToast(`Copied: ${f.name}`);
+          } catch {
+            showToast(`Path: ${f.name}`);
+          }
+        }
       });
     });
     document.querySelectorAll("[data-resolution]").forEach((btn) => {
@@ -2105,13 +2304,48 @@ ${rule}` : rule;
       }
     });
     document.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
-        e.preventDefault();
-        desktop.activeTab = "settings";
-        renderDesktopView();
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        invoke2("open_sync_folder");
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl) {
+        if (e.key === "1") {
+          e.preventDefault();
+          desktop.activeTab = "files";
+          renderDesktopView();
+        } else if (e.key === "2") {
+          e.preventDefault();
+          desktop.activeTab = "conflicts";
+          renderDesktopView();
+        } else if (e.key === "3") {
+          e.preventDefault();
+          desktop.activeTab = "routing";
+          renderDesktopView();
+        } else if (e.key === "4" || e.key === ",") {
+          e.preventDefault();
+          desktop.activeTab = "settings";
+          renderDesktopView();
+        } else if (e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          if (desktop.activeTab !== "files") {
+            desktop.activeTab = "files";
+            renderDesktopView();
+          }
+          const input = $("file-search-input");
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        } else if (e.key.toLowerCase() === "r") {
+          e.preventDefault();
+          showToast("Syncing files…");
+          refreshDesktop();
+        } else if (e.key.toLowerCase() === "o") {
+          e.preventDefault();
+          invoke2("open_sync_folder");
+        }
+      } else if (e.key === "Escape") {
+        if (desktop.searchQuery) {
+          desktop.searchQuery = "";
+          renderDesktopView();
+        }
       }
     });
   }

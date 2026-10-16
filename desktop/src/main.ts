@@ -14,6 +14,7 @@ import { friendlyError, type Overview } from "./lib/status";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "./lib/actions";
 import { PROVIDERS, SETUP_STEPS, MIN_PASSPHRASE, validateSetupStep, setupErrorStep, type ProviderId, type SetupValues } from "./lib/setup";
 import { getTheme, setTheme, applyTheme, type Theme } from "./lib/theme";
+import type { FileCategory } from "./lib/icons";
 import type { AiConfigResponse, ConflictItem, MountedVolume, NasTaxonomyScan, RecentFile, Resolution, RouteDecision, VaultStatus } from "./lib/types";
 
 type View = "desktop" | "popover" | "settings" | "setup";
@@ -662,8 +663,24 @@ const desktop = {
   settingsModel: null as SettingsModel | null,
   aiConfig: undefined as AiConfigResponse | undefined,
   theme: getTheme(),
+  searchQuery: "",
+  activeCategory: "all" as FileCategory,
+  notifyConflicts: typeof localStorage !== "undefined" ? localStorage.getItem("renegadebox-notify-conflicts") !== "false" : true,
+  notifySync: typeof localStorage !== "undefined" ? localStorage.getItem("renegadebox-notify-sync") === "true" : false,
   busy: false,
 };
+
+let toastTimer: any = null;
+function showToast(msg: string, durationMs = 2200) {
+  const t = $("desktop-toast");
+  if (!t) return;
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.hidden = true;
+  }, durationMs);
+}
 
 async function refreshDesktop() {
   try {
@@ -714,8 +731,14 @@ function renderDesktopView() {
     overview: desktop.overview,
     recent: desktop.recent,
     conflicts: desktop.conflicts,
-    settings: desktop.settingsModel,
+    settings: {
+      ...desktop.settingsModel,
+      notifyConflicts: desktop.notifyConflicts,
+      notifySync: desktop.notifySync,
+    },
     theme: desktop.theme,
+    searchQuery: desktop.searchQuery,
+    activeCategory: desktop.activeCategory,
     now: Date.now(),
   });
   bindDesktopEvents();
@@ -730,6 +753,44 @@ function bindDesktopEvents() {
       const tab = btn.dataset.desktopTab as DesktopTab;
       if (tab && desktop.activeTab !== tab) {
         desktop.activeTab = tab;
+        renderDesktopView();
+      }
+    });
+  });
+
+  // Search input & clearing
+  const searchInput = $<HTMLInputElement>("file-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      desktop.searchQuery = searchInput.value;
+      renderDesktopView();
+      const nextInput = $<HTMLInputElement>("file-search-input");
+      if (nextInput) {
+        nextInput.focus();
+        const len = nextInput.value.length;
+        nextInput.setSelectionRange(len, len);
+      }
+    });
+  }
+
+  $("file-search-clear")?.addEventListener("click", () => {
+    desktop.searchQuery = "";
+    renderDesktopView();
+    $<HTMLInputElement>("file-search-input")?.focus();
+  });
+
+  $("clear-search-btn")?.addEventListener("click", () => {
+    desktop.searchQuery = "";
+    desktop.activeCategory = "all";
+    renderDesktopView();
+  });
+
+  // Category filter pills
+  document.querySelectorAll<HTMLButtonElement>(".cat-pill").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cat = btn.dataset.cat as FileCategory;
+      if (cat && desktop.activeCategory !== cat) {
+        desktop.activeCategory = cat;
         renderDesktopView();
       }
     });
@@ -751,6 +812,21 @@ function bindDesktopEvents() {
     });
   });
 
+  // Notification toggles in Settings
+  $("notify-conflicts-toggle")?.addEventListener("change", (e) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    desktop.notifyConflicts = checked;
+    localStorage.setItem("renegadebox-notify-conflicts", String(checked));
+    showToast(checked ? "Conflict notifications enabled" : "Conflict notifications disabled");
+  });
+
+  $("notify-sync-toggle")?.addEventListener("change", (e) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    desktop.notifySync = checked;
+    localStorage.setItem("renegadebox-notify-sync", String(checked));
+    showToast(checked ? "Sync notifications enabled" : "Sync notifications disabled");
+  });
+
   // Folder actions
   $("sidebar-folder-btn")?.addEventListener("click", () => void invoke("open_sync_folder"));
   $("open-folder-btn")?.addEventListener("click", () => void invoke("open_sync_folder"));
@@ -763,8 +839,10 @@ function bindDesktopEvents() {
     try {
       if (desktop.overview.paused) {
         await invoke("resume_sync");
+        showToast("Sync resumed");
       } else {
         await invoke("pause_sync");
+        showToast("Sync paused");
       }
       await refreshDesktop();
     } catch (e) {
@@ -776,19 +854,47 @@ function bindDesktopEvents() {
   $("sidebar-pause-btn")?.addEventListener("click", togglePause);
   $("pause-btn")?.addEventListener("click", togglePause);
 
-  // File open & reveal
+  // File open, reveal, copy-path, and double-click
+  document.querySelectorAll<HTMLTableRowElement>("tr.file-table-row").forEach((row) => {
+    row.addEventListener("dblclick", () => {
+      const idx = Number(row.dataset.index);
+      const f = desktop.recent[idx];
+      if (f) void invoke("open_file", { path: f.path });
+    });
+  });
+
   document.querySelectorAll<HTMLButtonElement>("[data-action='open']").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const idx = Number(btn.dataset.index);
       const f = desktop.recent[idx];
       if (f) void invoke("open_file", { path: f.path });
     });
   });
+
   document.querySelectorAll<HTMLButtonElement>("[data-action='reveal']").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const idx = Number(btn.dataset.index);
       const f = desktop.recent[idx];
       if (f) void invoke("reveal_in_finder", { path: f.path });
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-action='copy-path']").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.dataset.index);
+      const f = desktop.recent[idx];
+      if (f) {
+        const fullPath = f.folder ? `${f.folder}/${f.name}` : f.name;
+        try {
+          await navigator.clipboard.writeText(fullPath);
+          showToast(`Copied: ${f.name}`);
+        } catch {
+          showToast(`Path: ${f.name}`);
+        }
+      }
     });
   });
 
@@ -840,13 +946,48 @@ function initDesktop() {
   });
 
   document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === ",") {
-      e.preventDefault();
-      desktop.activeTab = "settings";
-      renderDesktopView();
-    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
-      e.preventDefault();
-      void invoke("open_sync_folder");
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+    if (isCmdOrCtrl) {
+      if (e.key === "1") {
+        e.preventDefault();
+        desktop.activeTab = "files";
+        renderDesktopView();
+      } else if (e.key === "2") {
+        e.preventDefault();
+        desktop.activeTab = "conflicts";
+        renderDesktopView();
+      } else if (e.key === "3") {
+        e.preventDefault();
+        desktop.activeTab = "routing";
+        renderDesktopView();
+      } else if (e.key === "4" || e.key === ",") {
+        e.preventDefault();
+        desktop.activeTab = "settings";
+        renderDesktopView();
+      } else if (e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        if (desktop.activeTab !== "files") {
+          desktop.activeTab = "files";
+          renderDesktopView();
+        }
+        const input = $<HTMLInputElement>("file-search-input");
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      } else if (e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        showToast("Syncing files…");
+        void refreshDesktop();
+      } else if (e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        void invoke("open_sync_folder");
+      }
+    } else if (e.key === "Escape") {
+      if (desktop.searchQuery) {
+        desktop.searchQuery = "";
+        renderDesktopView();
+      }
     }
   });
 }

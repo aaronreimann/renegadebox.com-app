@@ -1,6 +1,6 @@
 // Pure HTML renderers for each screen. No DOM access here, so they can be tested with bun.
 import { escapeHtml as esc, relativeTime, formatBytes } from "./format";
-import { fileIcon, icons } from "./icons";
+import { fileIcon, icons, categorizeFile, type FileCategory } from "./icons";
 import { describeStatus, type Overview, type StatusKind } from "./status";
 import { keyStoreKind } from "./actions";
 import { PROVIDERS, MIN_PASSPHRASE, providerLabel } from "./setup";
@@ -122,6 +122,8 @@ export interface SettingsModel {
   status: VaultStatus;
   autostart: boolean;
   ignored: string[];
+  notifyConflicts?: boolean;
+  notifySync?: boolean;
 }
 
 export function renderPopoverSettings({ status, autostart, ignored }: SettingsModel): string {
@@ -221,7 +223,7 @@ export function renderPopoverSettings({ status, autostart, ignored }: SettingsMo
     </section>`;
 }
 
-export function renderSettings({ status, autostart, ignored }: SettingsModel, initialTab: string = "general"): string {
+export function renderSettings({ status, autostart, ignored, notifyConflicts = true, notifySync = false }: SettingsModel, initialTab: string = "general"): string {
   const kind = keyStoreKind(status.key_store);
   const row = (label: string, value: string) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
   const folder = status.folder ?? "Not set up";
@@ -292,6 +294,26 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel, in
               <button class="theme-btn" data-theme="dark" type="button" title="Dark theme">
                 ${icons.moon(14)}<span>Dark</span>
               </button>
+            </div>
+          </div>
+          <div class="field" style="margin-top: 14px;">
+            <span class="field-label">Notifications</span>
+            <span class="field-hint">Control system alerts for sync activity and file conflicts.</span>
+            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+              <label class="switch-row compact">
+                <span>
+                  <span class="field-label" style="font-size:12px;">Alert on file conflicts</span>
+                  <span class="field-hint">Show a desktop notification when concurrent edits conflict.</span>
+                </span>
+                <input id="notify-conflicts-toggle" class="switch" type="checkbox" role="switch"${notifyConflicts !== false ? " checked" : ""} />
+              </label>
+              <label class="switch-row compact">
+                <span>
+                  <span class="field-label" style="font-size:12px;">Alert on sync completion</span>
+                  <span class="field-hint">Show a notification when large sync batches finish.</span>
+                </span>
+                <input id="notify-sync-toggle" class="switch" type="checkbox" role="switch"${notifySync ? " checked" : ""} />
+              </label>
             </div>
           </div>
         </section>
@@ -581,22 +603,38 @@ export interface DesktopAppModel {
   conflicts: ConflictItem[];
   settings: SettingsModel;
   theme: "system" | "light" | "dark";
+  searchQuery?: string;
+  activeCategory?: FileCategory;
   now: number;
 }
 
-export function renderDesktopApp({ activeTab, overview, recent, conflicts, settings, theme, now }: DesktopAppModel): string {
+export function renderDesktopApp({
+  activeTab,
+  overview,
+  recent,
+  conflicts,
+  settings,
+  theme,
+  searchQuery = "",
+  activeCategory = "all",
+  now,
+}: DesktopAppModel): string {
   const st = describeStatus(overview);
   const pauseLabel = overview.paused ? "Resume" : "Pause";
-  const totalSize = settings.status.total_bytes ? ` · ${formatBytes(settings.status.total_bytes)}` : "";
+  const totalBytes = settings.status.total_bytes ?? 0;
+  const totalSize = totalBytes ? ` · ${formatBytes(totalBytes)}` : "";
   const filesCount = settings.status.total_files ? `${settings.status.total_files} files${totalSize}` : "No files synced yet";
+
+  // Visual storage meter percentage (5% min, logarithmic up to 100% based on file activity)
+  const storageMeterWidth = totalBytes > 0 ? Math.min(100, Math.max(12, Math.round(Math.min(100, (totalBytes / (50 * 1024 * 1024)) * 100)))) : 6;
 
   const statusClass = `status-${st.kind}`;
 
-  const navItems: { id: DesktopTab; label: string; icon: string; count?: number; isDanger?: boolean }[] = [
-    { id: "files", label: "Recent Files", icon: icons.doc(16), count: recent.length > 0 ? recent.length : undefined },
-    { id: "conflicts", label: "Activity & Conflicts", icon: icons.sync(16), count: conflicts.length > 0 ? conflicts.length : undefined, isDanger: conflicts.length > 0 },
-    { id: "routing", label: "Smart Routing", icon: icons.sparkles(16) },
-    { id: "settings", label: "Settings", icon: icons.gear(16) },
+  const navItems: { id: DesktopTab; label: string; icon: string; shortcut: string; count?: number; isDanger?: boolean }[] = [
+    { id: "files", label: "Recent Files", icon: icons.doc(16), shortcut: "⌘1", count: recent.length > 0 ? recent.length : undefined },
+    { id: "conflicts", label: "Activity & Conflicts", icon: icons.sync(16), shortcut: "⌘2", count: conflicts.length > 0 ? conflicts.length : undefined, isDanger: conflicts.length > 0 },
+    { id: "routing", label: "Smart Routing", icon: icons.sparkles(16), shortcut: "⌘3" },
+    { id: "settings", label: "Settings", icon: icons.gear(16), shortcut: "⌘4" },
   ];
 
   const navHtml = navItems
@@ -607,7 +645,10 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
         ${item.icon}
         <span>${esc(item.label)}</span>
       </span>
-      ${item.count !== undefined ? `<span class="sidebar-badge${item.isDanger ? " danger" : ""}">${item.count}</span>` : ""}
+      <span class="sidebar-nav-trailing">
+        ${item.count !== undefined ? `<span class="sidebar-badge${item.isDanger ? " danger" : ""}">${item.count}</span>` : ""}
+        <kbd class="sidebar-kbd">${item.shortcut}</kbd>
+      </span>
     </button>`,
     )
     .join("");
@@ -625,56 +666,99 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
     } else if (recent.length === 0) {
       body = `<div class="empty"><p>Files you add to your RenegadeBox folder will show up here.</p></div>`;
     } else {
-      const rows = recent
-        .map((f, i) => {
-          const where = f.folder ? f.folder.split("/").pop()! : "RenegadeBox";
-          return `
-          <tr class="file-table-row" data-index="${i}">
-            <td>
-              <div class="file-name-cell">
-                <span class="file-icon">${fileIcon(f.name)}</span>
-                <span title="${esc(f.name)}">${esc(f.name)}</span>
-              </div>
-            </td>
-            <td><span class="file-meta-folder">${esc(where)}</span></td>
-            <td><span class="file-meta-time">${esc(relativeTime(f.modified_ms, now))}</span></td>
-            <td>
-              <div class="file-actions-cell">
-                <button class="btn" type="button" data-action="open" data-index="${i}">Open</button>
-                <button class="btn" type="button" data-action="reveal" data-index="${i}">Show in Finder</button>
-              </div>
-            </td>
-          </tr>`;
-        })
-        .join("");
+      const q = searchQuery.trim().toLowerCase();
+      const currentCat = activeCategory;
+      const filtered = recent
+        .map((f, origIndex) => ({ f, origIndex }))
+        .filter(({ f }) => {
+          if (currentCat !== "all" && categorizeFile(f.name) !== currentCat) return false;
+          if (q) {
+            const nameMatch = f.name.toLowerCase().includes(q);
+            const folderMatch = f.folder ? f.folder.toLowerCase().includes(q) : false;
+            if (!nameMatch && !folderMatch) return false;
+          }
+          return true;
+        });
 
-      body = `
-        <table class="file-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Location</th>
-              <th>Modified</th>
-              <th style="text-align: right;">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>`;
+      if (filtered.length === 0) {
+        body = `
+          <div class="empty">
+            <p>No files match "${esc(searchQuery || currentCat)}".</p>
+            <button id="clear-search-btn" class="btn" type="button">Reset filters</button>
+          </div>`;
+      } else {
+        const rows = filtered
+          .map(({ f, origIndex }) => {
+            const where = f.folder ? f.folder.split("/").pop()! : "RenegadeBox";
+            return `
+            <tr class="file-table-row" data-index="${origIndex}" data-path="${esc(f.path)}" title="Double-click to open">
+              <td>
+                <div class="file-name-cell">
+                  <span class="file-status-glyph" title="Up to date">${icons.check(13)}</span>
+                  <span class="file-icon">${fileIcon(f.name)}</span>
+                  <span class="file-name-text" title="${esc(f.name)}">${esc(f.name)}</span>
+                </div>
+              </td>
+              <td><span class="file-meta-folder">${esc(where)}</span></td>
+              <td><span class="file-meta-time">${esc(relativeTime(f.modified_ms, now))}</span></td>
+              <td>
+                <div class="file-actions-cell">
+                  <button class="btn icon-only-btn" type="button" data-action="copy-path" data-index="${origIndex}" title="Copy path to clipboard">${icons.copy(13)}</button>
+                  <button class="btn" type="button" data-action="open" data-index="${origIndex}">Open</button>
+                  <button class="btn" type="button" data-action="reveal" data-index="${origIndex}">Show in Finder</button>
+                </div>
+              </td>
+            </tr>`;
+          })
+          .join("");
+
+        body = `
+          <table class="file-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Modified</th>
+                <th style="text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>`;
+      }
     }
 
     mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
-          <h1 class="desktop-title">Recent Files</h1>
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h1 class="desktop-title">Recent Files</h1>
+            <span class="count-badge">${recent.length}</span>
+          </div>
           <p class="desktop-subtitle">Files synchronized on this Mac</p>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button id="open-folder-btn" class="btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
+        <div class="desktop-header-actions">
+          <button id="open-folder-btn" class="btn" type="button"${overview.initialized ? "" : " disabled"} title="Open RenegadeBox folder in Finder (⌘O)">${icons.folder()}<span>Open folder</span></button>
           <button id="pause-btn" class="btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
         </div>
       </header>
+
+      <div class="files-toolbar">
+        <div class="search-box">
+          <span class="search-glyph">${icons.search(14)}</span>
+          <input id="file-search-input" type="text" placeholder="Search recent files (⌘F)…" value="${esc(searchQuery)}" autocomplete="off" spellcheck="false" />
+          ${searchQuery ? `<button id="file-search-clear" class="clear-search-btn" type="button" aria-label="Clear search">${icons.clear(12)}</button>` : `<kbd class="kbd-badge">⌘F</kbd>`}
+        </div>
+        <div class="category-pills" role="radiogroup" aria-label="Filter by file type">
+          <button class="cat-pill${activeCategory === "all" ? " active" : ""}" data-cat="all" type="button">All</button>
+          <button class="cat-pill${activeCategory === "documents" ? " active" : ""}" data-cat="documents" type="button">Documents</button>
+          <button class="cat-pill${activeCategory === "images" ? " active" : ""}" data-cat="images" type="button">Images</button>
+          <button class="cat-pill${activeCategory === "code" ? " active" : ""}" data-cat="code" type="button">Code</button>
+          <button class="cat-pill${activeCategory === "archives" ? " active" : ""}" data-cat="archives" type="button">Archives</button>
+        </div>
+      </div>
+
       <div class="desktop-content-body">
         ${body}
       </div>`;
@@ -716,9 +800,12 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
     }
 
     mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
-          <h1 class="desktop-title">Activity & Conflicts</h1>
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h1 class="desktop-title">Activity & Conflicts</h1>
+            ${conflicts.length > 0 ? `<span class="count-badge danger">${conflicts.length}</span>` : ""}
+          </div>
           <p class="desktop-subtitle">Review sync conflicts and choose resolutions</p>
         </div>
       </header>
@@ -727,8 +814,8 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
       </div>`;
   } else if (activeTab === "routing") {
     mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
           <h1 class="desktop-title">Smart Routing</h1>
           <p class="desktop-subtitle">Synology NAS volume detection and AI-assisted file categorization</p>
         </div>
@@ -740,10 +827,10 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
       </div>`;
   } else if (activeTab === "settings") {
     mainContent = `
-      <header class="desktop-content-header">
-        <div class="desktop-title-area">
+      <header class="desktop-content-header" data-tauri-drag-region>
+        <div class="desktop-title-area" data-tauri-drag-region>
           <h1 class="desktop-title">Settings</h1>
-          <p class="desktop-subtitle">Preferences, storage, security, and smart routing</p>
+          <p class="desktop-subtitle">Preferences, storage, security, notifications, and smart routing</p>
         </div>
       </header>
       <div class="desktop-content-body">
@@ -757,8 +844,8 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
     <div class="desktop-layout">
       <aside class="desktop-sidebar">
         <div class="desktop-sidebar-top">
-          <div class="brand-header">
-            <div class="brand-info">
+          <div class="brand-header" data-tauri-drag-region>
+            <div class="brand-info" data-tauri-drag-region>
               <span class="brand-icon">${icons.box(18)}</span>
               <span class="brand-title">RenegadeBox</span>
             </div>
@@ -776,11 +863,14 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
           <div class="storage-card">
             <div class="storage-card-header">
               <span>Vault Storage</span>
-              <span>${esc(providerLabel(settings.status.endpoint))}</span>
+              <span class="storage-provider-pill">${esc(providerLabel(settings.status.endpoint))}</span>
             </div>
             <div class="storage-card-val" title="${esc(filesCount)}">${esc(filesCount)}</div>
+            <div class="storage-meter-track" title="Storage in use">
+              <div class="storage-meter-fill${overview.syncing ? " pulsing" : ""}" style="width: ${storageMeterWidth}%;"></div>
+            </div>
             <div class="sidebar-quick-actions">
-              <button id="sidebar-folder-btn" class="sidebar-quick-btn" type="button" title="Open RenegadeBox folder in Finder">
+              <button id="sidebar-folder-btn" class="sidebar-quick-btn" type="button" title="Open RenegadeBox folder in Finder (⌘O)">
                 ${icons.folder(12)}<span>Folder</span>
               </button>
               <button id="sidebar-pause-btn" class="sidebar-quick-btn" type="button" aria-pressed="${overview.paused}" title="${pauseLabel} syncing">
@@ -806,6 +896,7 @@ export function renderDesktopApp({ activeTab, overview, recent, conflicts, setti
       <main class="desktop-main">
         ${mainContent}
       </main>
+      <div id="desktop-toast" class="desktop-toast" role="status" aria-live="polite" hidden></div>
     </div>`;
 }
 
