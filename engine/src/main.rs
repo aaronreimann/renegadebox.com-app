@@ -1,0 +1,169 @@
+use std::path::PathBuf;
+use std::time::Duration;
+
+use anyhow::{Context, Result, bail};
+use clap::{Parser, Subcommand};
+use renegadebox_engine::config::{self, Config, KeyStoreKind, Profile, SECRET_MASTER, SECRET_S3};
+use renegadebox_engine::crypto::Vault;
+use renegadebox_engine::engine::{self, Engine};
+
+/// RenegadeBox — end-to-end-encrypted sync into your own S3 bucket.
+#[derive(Parser)]
+#[command(name = "rbox", version)]
+struct Cli {
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Connect this device to a bucket (creates the encrypted vault on first use).
+    Init {
+        #[arg(long)]
+        folder: PathBuf,
+        #[arg(long)]
+        bucket: String,
+        #[arg(long, default_value = "us-east-1")]
+        region: String,
+        /// Custom endpoint for S3-compatible storage (R2, B2, MinIO).
+        #[arg(long)]
+        endpoint: Option<String>,
+        #[arg(long)]
+        access_key_id: String,
+        /// Read from RBOX_S3_SECRET, or prompted.
+        #[arg(long, env = "RBOX_S3_SECRET", hide_env_values = true)]
+        secret_access_key: Option<String>,
+        #[arg(long)]
+        device_name: Option<String>,
+        /// Store secrets in a 0600 file instead of the OS keychain (headless servers, tests).
+        #[arg(long)]
+        insecure_file_keystore: bool,
+        /// Argon2id memory cost for a newly created vault.
+        #[arg(long, default_value_t = Vault::DEFAULT_M_KIB, hide = true)]
+        kdf_memory_kib: u32,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Run one sync cycle and exit.
+    Sync,
+    /// Keep syncing: react to local changes and poll for remote ones.
+    Watch {
+        #[arg(long, default_value_t = 15)]
+        poll_secs: u64,
+    },
+    /// Show configuration and pending changes.
+    Status,
+}
+
+fn passphrase(confirm: bool) -> Result<String> {
+    if let Ok(p) = std::env::var("RBOX_PASSPHRASE") {
+        return Ok(p);
+    }
+    let p = rpassword::prompt_password("Encryption passphrase: ")?;
+    if confirm {
+        if p.chars().count() < 12 {
+            bail!("passphrase must be at least 12 characters — it is the only thing protecting your files");
+        }
+        if rpassword::prompt_password("Confirm passphrase: ")? != p {
+            bail!("passphrases do not match");
+        }
+    }
+    Ok(p)
+}
+
+fn default_device_name() -> String {
+    std::process::Command::new("hostname")
+        .arg("-s")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "My Device".into())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("RBOX_LOG").unwrap_or_else(|_| "info,aws=warn".into()))
+        .with_target(false)
+        .init();
+    let cli = Cli::parse();
+    let profile = Profile::locate()?;
+
+    match cli.cmd {
+        Cmd::Init { folder, bucket, region, endpoint, access_key_id, secret_access_key, device_name, insecure_file_keystore, kdf_memory_kib, force } => {
+            if profile.config_path().exists() && !force {
+                bail!("{} already exists (use --force to re-initialize this device)", profile.config_path().display());
+            }
+            std::fs::create_dir_all(&folder)?;
+            let folder = folder.canonicalize()?;
+            if folder.starts_with(&profile.dir) || profile.dir.starts_with(&folder) {
+                bail!("the sync folder and the profile dir ({}) must not contain each other", profile.dir.display());
+            }
+            let device_name = device_name.unwrap_or_else(default_device_name);
+            config::validate_device_name(&device_name)?;
+            let secret = match secret_access_key {
+                Some(s) => s,
+                None => rpassword::prompt_password("S3 secret access key: ")?,
+            };
+            let mut cfg = Config {
+                folder,
+                bucket,
+                region,
+                endpoint,
+                access_key_id,
+                device_id: uuid::Uuid::new_v4().to_string(),
+                device_name,
+                key_store: if insecure_file_keystore { KeyStoreKind::InsecureFile } else { KeyStoreKind::Keychain },
+                vault_pin: String::new(),
+            };
+            let storage = engine::storage_for(&cfg, &secret);
+            let exists = storage
+                .exists(renegadebox_engine::journal::VAULT_KEY)
+                .await
+                .context("could not reach the bucket — check endpoint, bucket name and credentials")?;
+            let pass = passphrase(!exists)?;
+            let (master, pin, created) = engine::unlock_or_create_vault(&storage, &pass, (kdf_memory_kib, Vault::DEFAULT_T)).await?;
+            cfg.vault_pin = pin;
+            profile.set_secret(&cfg, SECRET_S3, &secret)?;
+            profile.set_secret(&cfg, SECRET_MASTER, &master.to_b64())?;
+            profile.save(&cfg)?;
+            let _ = std::fs::remove_file(profile.state_path());
+            println!(
+                "{} vault. Device \"{}\" ({}) syncing {} <-> s3://{}",
+                if created { "Created a new encrypted" } else { "Unlocked the existing" },
+                cfg.device_name,
+                cfg.device_id,
+                cfg.folder.display(),
+                cfg.bucket
+            );
+            if created {
+                println!("Keep your passphrase safe: without it, no new device can read your files.");
+            }
+        }
+        Cmd::Sync => {
+            let mut e = Engine::open(profile).await?;
+            let r = e.sync_once().await?;
+            println!("{r}");
+        }
+        Cmd::Watch { poll_secs } => {
+            let mut e = Engine::open(profile).await?;
+            renegadebox_engine::watch::run(&mut e, Duration::from_secs(poll_secs.max(1))).await?;
+        }
+        Cmd::Status => {
+            let mut e = Engine::open(profile).await?;
+            e.scan()?;
+            let cfg = e.cfg.clone();
+            let all = e.state().all()?;
+            let pending = all.iter().filter(|r| r.is_dirty()).count();
+            let tracked = all.iter().filter(|r| r.synced_hash.is_some()).count();
+            println!("folder:   {}", cfg.folder.display());
+            println!("bucket:   s3://{}{}", cfg.bucket, cfg.endpoint.as_deref().map(|e| format!(" via {e}")).unwrap_or_default());
+            println!("device:   {} ({})", cfg.device_name, cfg.device_id);
+            println!("keystore: {:?}", cfg.key_store);
+            println!("synced files: {tracked}   pending local changes: {pending}");
+        }
+    }
+    Ok(())
+}

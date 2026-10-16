@@ -1,0 +1,23 @@
+# Local S3-compatible storage for engine development and the e2e test.
+# MinIO no longer publishes images; SeaweedFS stands in. With no identities configured,
+# its S3 gateway accepts any credentials — dev only.
+services:
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    command: server -s3 -s3.port=8333 -dir=/data -volume.max=0 -master.volumeSizeLimitMB=256
+    ports:
+      - "8333:8333"
+    volumes:
+      - s3data:/data
+  # Phase 2: control-plane database (hub + dashboard). Not used by the engine.
+  postgres:
+    image: postgres:17
+    profiles: ["control-plane"]
+    environment:
+      POSTGRES_USER: renegadebox
+      POSTGRES_PASSWORD: renegadebox
+      POSTGRES_DB: renegadebox
+    ports:
+      - "5432:5432"
+volumes:
+  s3data:

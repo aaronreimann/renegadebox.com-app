@@ -1,0 +1,613 @@
+//! The sync engine: scan local folder -> pull remote journal -> push local changes.
+//!
+//! Conflict rule (see docs/ARCHITECTURE.md): for each path, the entry with the highest
+//! (lamport, device_id) wins on every device, regardless of arrival order. When a newer
+//! remote entry would replace content that exists only here — an unsynced local edit, or
+//! a version this device authored that the remote entry never saw — this device first
+//! moves its copy aside as a "conflicted copy", which is then published like any new file.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use anyhow::{Context, Result, anyhow, bail};
+use sha2::{Digest, Sha256};
+use tracing::{debug, info, warn};
+use walkdir::WalkDir;
+
+use crate::config::{Config, Profile, SECRET_MASTER, SECRET_S3};
+use crate::crypto::{self, Keys, SecretKey, Vault};
+use crate::journal::{self, Action, JournalEntry};
+use crate::paths;
+use crate::state::{FileRow, State};
+use crate::storage::{PutIfAbsentError, S3Settings, Storage};
+
+/// Another device wrote to this device's journal slot: the profile was cloned or restored.
+/// Continuing would fork the journal, so this aborts the whole sync.
+#[derive(Debug, thiserror::Error)]
+#[error("journal slot {0} is already taken: another device is using this device id (cloned or restored profile?). Re-run `rbox init --force` on one of them.")]
+pub struct IdentityCollision(pub String);
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct SyncReport {
+    pub uploaded: usize,
+    pub deleted_remote: usize,
+    pub renamed_remote: usize,
+    pub downloaded: usize,
+    pub deleted_local: usize,
+    pub renamed_local: usize,
+    pub conflicts: usize,
+    pub skipped_stale: usize,
+}
+
+impl std::fmt::Display for SyncReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "pushed: {} up, {} del, {} mv | pulled: {} down, {} del, {} mv | conflicts: {} | stale skipped: {}",
+            self.uploaded,
+            self.deleted_remote,
+            self.renamed_remote,
+            self.downloaded,
+            self.deleted_local,
+            self.renamed_local,
+            self.conflicts,
+            self.skipped_stale
+        )
+    }
+}
+
+pub struct Engine {
+    pub cfg: Config,
+    profile: Profile,
+    keys: Keys,
+    state: State,
+    storage: Storage,
+    root: PathBuf,
+    report: SyncReport,
+}
+
+struct LocalStat {
+    size: u64,
+    mtime_ns: i64,
+}
+
+fn stat(path: &Path) -> Option<LocalStat> {
+    let md = std::fs::symlink_metadata(path).ok()?;
+    if !md.file_type().is_file() {
+        return None;
+    }
+    let mtime_ns = md
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos() as i64)
+        .unwrap_or(0);
+    Some(LocalStat { size: md.len(), mtime_ns })
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+fn decode_hash(h: &str) -> Result<[u8; 32]> {
+    hex::decode(h)?.try_into().map_err(|_| anyhow!("hash must be 32 bytes"))
+}
+
+pub fn storage_for(cfg: &Config, secret: &str) -> Storage {
+    Storage::new(&S3Settings {
+        bucket: &cfg.bucket,
+        region: &cfg.region,
+        endpoint: cfg.endpoint.as_deref(),
+        access_key_id: &cfg.access_key_id,
+        secret_access_key: secret,
+    })
+}
+
+impl Engine {
+    pub async fn open(profile: Profile) -> Result<Self> {
+        let cfg = profile.load()?;
+        let s3_secret = profile.get_secret(&cfg, SECRET_S3)?;
+        let master = SecretKey::from_b64(&profile.get_secret(&cfg, SECRET_MASTER)?)?;
+        let storage = storage_for(&cfg, &s3_secret);
+
+        match storage.get_bytes(journal::VAULT_KEY).await? {
+            Some(v) if crypto::sha256_hex(&v) != cfg.vault_pin => warn!(
+                "rb/vault.json changed since this device was set up. If you did not change your passphrase, someone with bucket access replaced it."
+            ),
+            Some(_) => {}
+            None => warn!("rb/vault.json is missing from the bucket; new devices will not be able to join"),
+        }
+
+        let state = State::open(&profile.state_path())?;
+        let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
+        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default() })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    /// One full cycle. Order matters: scan first so pull can see unsynced local edits.
+    pub async fn sync_once(&mut self) -> Result<SyncReport> {
+        self.report = SyncReport::default();
+        self.scan()?;
+        self.pull().await?;
+        self.push().await?;
+        self.state.gc()?;
+        Ok(self.report)
+    }
+
+    // ------------------------------------------------------------------ scan
+
+    /// Record what is on disk. Unchanged files (same size + mtime) are not re-hashed.
+    pub fn scan(&mut self) -> Result<()> {
+        let mut seen = std::collections::HashSet::new();
+        let walker = WalkDir::new(&self.root).follow_links(false).into_iter().filter_entry(|e| {
+            e.depth() == 0 || !paths::is_ignored(&e.file_name().to_string_lossy())
+        });
+        for entry in walker {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!("scan: {e}");
+                    continue;
+                }
+            };
+            if !entry.file_type().is_file() {
+                continue; // directories are implicit; symlinks are never followed or synced
+            }
+            let Some(rel) = paths::to_rel(&self.root, entry.path()) else {
+                warn!("skipping unrepresentable path {}", entry.path().display());
+                continue;
+            };
+            seen.insert(rel.clone());
+            let mut row = self.state.get_or_new(&rel)?;
+            if self.refresh_local(&mut row)? {
+                self.state.put(&row)?;
+            }
+        }
+        for mut row in self.state.all()? {
+            if row.local_hash.is_some() && !seen.contains(&row.path) {
+                row.local_hash = None;
+                row.local_size = None;
+                row.local_mtime_ns = None;
+                self.state.put(&row)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Re-observe one path on disk; returns true if the row changed.
+    fn refresh_local(&self, row: &mut FileRow) -> Result<bool> {
+        let abs = paths::to_abs(&self.root, &row.path)?;
+        match stat(&abs) {
+            None => {
+                let changed = row.local_hash.is_some();
+                row.local_hash = None;
+                row.local_size = None;
+                row.local_mtime_ns = None;
+                Ok(changed)
+            }
+            Some(st) => {
+                if row.local_hash.is_some() && row.local_size == Some(st.size) && row.local_mtime_ns == Some(st.mtime_ns) {
+                    return Ok(false);
+                }
+                let h = match crypto::hash_file(&abs) {
+                    Ok(h) => hex::encode(h),
+                    Err(e) => {
+                        warn!("could not read {}: {e}", row.path);
+                        return Ok(false);
+                    }
+                };
+                row.local_hash = Some(h);
+                row.local_size = Some(st.size);
+                row.local_mtime_ns = Some(st.mtime_ns);
+                Ok(true)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ clocks
+
+    fn next_lamport(&self) -> Result<u64> {
+        let l = now_ms().max(self.state.meta_u64("max_lamport")? + 1);
+        self.state.set_meta("max_lamport", &l.to_string())?;
+        Ok(l)
+    }
+
+    fn observe_lamport(&self, l: u64) -> Result<()> {
+        if l > self.state.meta_u64("max_lamport")? {
+            self.state.set_meta("max_lamport", &l.to_string())?;
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------ pull
+
+    /// Fetch every new journal entry from other devices and apply them in global order.
+    pub async fn pull(&mut self) -> Result<()> {
+        let mut batch: Vec<JournalEntry> = Vec::new();
+        for prefix in self.storage.list_prefixes(journal::JOURNAL_PREFIX).await? {
+            let device = prefix.trim_start_matches(journal::JOURNAL_PREFIX).trim_end_matches('/').to_string();
+            if device == self.cfg.device_id {
+                continue;
+            }
+            let cursor = self.state.cursor(&device)?;
+            let start_after = (cursor > 0).then(|| journal::journal_key(&device, cursor));
+            let mut expected = cursor + 1;
+            for key in self.storage.list_keys(&prefix, start_after.as_deref()).await? {
+                let Some((dev, seq)) = journal::parse_journal_key(&key) else { continue };
+                if dev != device || seq != expected {
+                    // A gap means an entry is not visible yet; stop here and retry later.
+                    debug!("journal gap for {device} at {expected} (saw {seq})");
+                    break;
+                }
+                let sealed = self.storage.get_bytes(&key).await?.ok_or_else(|| anyhow!("{key} vanished"))?;
+                let plain = self.keys.open(&sealed, &key)?;
+                let entry: JournalEntry = serde_json::from_slice(&plain).with_context(|| format!("parse {key}"))?;
+                entry.validate().with_context(|| format!("invalid entry {key}"))?;
+                if entry.device_id != device || entry.seq != seq {
+                    bail!("journal entry {key} does not match its object key");
+                }
+                batch.push(entry);
+                expected += 1;
+            }
+        }
+        batch.sort_by(|a, b| a.order().cmp(&b.order()));
+        for e in batch {
+            self.apply(&e).await.with_context(|| format!("applying {} {:?} {}", e.device_name, e.action, e.path))?;
+            self.observe_lamport(e.lamport)?;
+            self.state.set_cursor(&e.device_id, e.seq)?;
+        }
+        Ok(())
+    }
+
+    async fn apply(&mut self, e: &JournalEntry) -> Result<()> {
+        match e.action {
+            Action::Added | Action::Modified => self.apply_put(&e.path, e, e.base_hash.as_deref()).await,
+            Action::Deleted => self.apply_delete(&e.path, e, e.base_hash.as_deref()),
+            Action::Renamed => {
+                let old = e.old_path.as_deref().ok_or_else(|| anyhow!("rename without old_path"))?;
+                if self.try_local_rename(old, e)? {
+                    return Ok(());
+                }
+                self.apply_delete(old, e, e.base_hash.as_deref())?;
+                self.apply_put(&e.path, e, None).await
+            }
+        }
+    }
+
+    /// Decide whether `e` applies to `rel`, preserving any content that would otherwise be lost.
+    /// Returns the (refreshed) row to update, or None if the entry is stale/losing.
+    fn prepare(&mut self, rel: &str, e: &JournalEntry, base: Option<&str>, incoming: Option<&str>) -> Result<Option<FileRow>> {
+        let mut row = self.state.get_or_new(rel)?;
+        if e.order() <= row.head_order() {
+            self.report.skipped_stale += 1;
+            return Ok(None);
+        }
+        self.refresh_local(&mut row)?;
+        if let Some(local) = row.local_hash.clone() {
+            let same_content = incoming == Some(local.as_str());
+            let unsynced_edit = row.is_dirty();
+            let lost_race = row.head_device == self.cfg.device_id && base != row.synced_hash.as_deref();
+            if !same_content && (unsynced_edit || lost_race) {
+                self.move_to_conflict_copy(&mut row, &local)?;
+            }
+        }
+        Ok(Some(row))
+    }
+
+    fn move_to_conflict_copy(&mut self, row: &mut FileRow, local_hash: &str) -> Result<()> {
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let base_name = paths::conflict_name(&row.path, &self.cfg.device_name, &date, local_hash);
+        let mut name = base_name.clone();
+        let mut n = 2;
+        while paths::to_abs(&self.root, &name)?.exists() {
+            name = base_name.replacen(" (conflicted copy", &format!(" (conflicted copy {n}"), 1);
+            n += 1;
+        }
+        let from = paths::to_abs(&self.root, &row.path)?;
+        let to = paths::to_abs(&self.root, &name)?;
+        std::fs::rename(&from, &to).with_context(|| format!("preserve conflicted copy {name}"))?;
+        info!("conflict: kept this device's version of {} as {}", row.path, name);
+        let mut copy = FileRow::new(&name);
+        copy.local_hash = Some(local_hash.to_string());
+        if let Some(st) = stat(&to) {
+            copy.local_size = Some(st.size);
+            copy.local_mtime_ns = Some(st.mtime_ns);
+        }
+        self.state.put(&copy)?;
+        row.local_hash = None;
+        row.local_size = None;
+        row.local_mtime_ns = None;
+        self.report.conflicts += 1;
+        Ok(())
+    }
+
+    fn set_head(row: &mut FileRow, e: &JournalEntry, hash: Option<&str>) {
+        row.synced_hash = hash.map(str::to_string);
+        row.blob_id = if hash.is_some() { e.blob_id.clone() } else { None };
+        row.head_lamport = e.lamport;
+        row.head_device = e.device_id.clone();
+    }
+
+    async fn apply_put(&mut self, rel: &str, e: &JournalEntry, base: Option<&str>) -> Result<()> {
+        let hash = e.hash.as_deref().ok_or_else(|| anyhow!("put without hash"))?;
+        let Some(mut row) = self.prepare(rel, e, base, Some(hash))? else { return Ok(()) };
+        if row.local_hash.as_deref() == Some(hash) {
+            Self::set_head(&mut row, e, Some(hash));
+            return self.state.put(&row);
+        }
+        let blob_id = e.blob_id.as_deref().ok_or_else(|| anyhow!("put without blob_id"))?;
+        let plain_hash = decode_hash(hash)?;
+        if self.keys.blob_id(&plain_hash) != blob_id {
+            bail!("blob id does not match content hash for {rel}");
+        }
+        let abs = paths::to_abs(&self.root, rel)?;
+        if let Some(parent) = abs.parent() {
+            std::fs::create_dir_all(parent)?;
+            // create_dir_all may have raced a symlink in; re-validate.
+            paths::to_abs(&self.root, rel)?;
+        }
+        let tmp_enc = self.profile.tmp_dir().join(format!("{}.enc", uuid::Uuid::new_v4()));
+        let tmp_plain = abs.with_file_name(format!("{}{}", paths::TMP_PREFIX, uuid::Uuid::new_v4()));
+        let result = async {
+            self.storage.get_to_file(&journal::blob_key(blob_id), &tmp_enc).await?;
+            crypto::decrypt_file(&self.keys, &plain_hash, &tmp_enc, &tmp_plain)?;
+            if let Some(ms) = e.mtime_ms {
+                let t = UNIX_EPOCH + Duration::from_millis(ms.max(0) as u64);
+                std::fs::File::options().write(true).open(&tmp_plain)?.set_modified(t)?;
+            }
+            anyhow::Ok(())
+        }
+        .await;
+        let _ = std::fs::remove_file(&tmp_enc);
+        if let Err(err) = result {
+            let _ = std::fs::remove_file(&tmp_plain);
+            return Err(err);
+        }
+        // Clobber check: the user may have edited the file while we were downloading.
+        let recorded = row.local_hash.clone();
+        self.refresh_local(&mut row)?;
+        if row.local_hash.is_some() && row.local_hash != recorded {
+            let local = row.local_hash.clone().expect("checked");
+            if local != hash {
+                self.move_to_conflict_copy(&mut row, &local)?;
+            }
+        }
+        std::fs::rename(&tmp_plain, &abs).with_context(|| format!("install {rel}"))?;
+        Self::set_head(&mut row, e, Some(hash));
+        row.local_hash = Some(hash.to_string());
+        let st = stat(&abs);
+        row.local_size = st.as_ref().map(|s| s.size);
+        row.local_mtime_ns = st.as_ref().map(|s| s.mtime_ns);
+        self.state.put(&row)?;
+        self.report.downloaded += 1;
+        Ok(())
+    }
+
+    fn apply_delete(&mut self, rel: &str, e: &JournalEntry, base: Option<&str>) -> Result<()> {
+        let Some(mut row) = self.prepare(rel, e, base, None)? else { return Ok(()) };
+        if row.local_hash.is_some() {
+            let abs = paths::to_abs(&self.root, rel)?;
+            std::fs::remove_file(&abs).with_context(|| format!("delete {rel}"))?;
+            self.remove_empty_parents(&abs);
+            self.report.deleted_local += 1;
+        }
+        Self::set_head(&mut row, e, None);
+        row.local_hash = None;
+        row.local_size = None;
+        row.local_mtime_ns = None;
+        self.state.put(&row)
+    }
+
+    /// Remote rename of content we already have: move the file instead of downloading.
+    fn try_local_rename(&mut self, old: &str, e: &JournalEntry) -> Result<bool> {
+        let mut old_row = self.state.get_or_new(old)?;
+        let mut new_row = self.state.get_or_new(&e.path)?;
+        if e.order() <= old_row.head_order() || e.order() <= new_row.head_order() {
+            return Ok(false);
+        }
+        self.refresh_local(&mut old_row)?;
+        self.refresh_local(&mut new_row)?;
+        let clean_match = !old_row.is_dirty() && old_row.local_hash.is_some() && old_row.local_hash == e.hash;
+        if !clean_match || new_row.local_hash.is_some() || old_row.synced_hash.as_deref() != e.base_hash.as_deref() {
+            return Ok(false);
+        }
+        let from = paths::to_abs(&self.root, old)?;
+        let to = paths::to_abs(&self.root, &e.path)?;
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&from, &to).with_context(|| format!("rename {old} -> {}", e.path))?;
+        self.remove_empty_parents(&from);
+        Self::set_head(&mut old_row, e, None);
+        old_row.local_hash = None;
+        old_row.local_size = None;
+        old_row.local_mtime_ns = None;
+        Self::set_head(&mut new_row, e, e.hash.as_deref());
+        new_row.local_hash = e.hash.clone();
+        let st = stat(&to);
+        new_row.local_size = st.as_ref().map(|s| s.size);
+        new_row.local_mtime_ns = st.as_ref().map(|s| s.mtime_ns);
+        self.state.put(&old_row)?;
+        self.state.put(&new_row)?;
+        self.report.renamed_local += 1;
+        Ok(true)
+    }
+
+    fn remove_empty_parents(&self, abs: &Path) {
+        let mut dir = abs.parent();
+        while let Some(d) = dir {
+            if d == self.root || !d.starts_with(&self.root) || std::fs::remove_dir(d).is_err() {
+                break;
+            }
+            dir = d.parent();
+        }
+    }
+
+    // ------------------------------------------------------------------ push
+
+    pub async fn push(&mut self) -> Result<()> {
+        let dirty = self.state.dirty()?;
+        // Rename detection: a disappeared synced file + a new file with identical content.
+        let mut adds: HashMap<String, FileRow> = HashMap::new();
+        for r in dirty.iter().filter(|r| r.synced_hash.is_none() && r.local_hash.is_some()) {
+            adds.entry(r.local_hash.clone().expect("filtered")).or_insert_with(|| r.clone());
+        }
+        let mut renamed_targets = std::collections::HashSet::new();
+        for del in dirty.iter().filter(|r| r.local_hash.is_none() && r.synced_hash.is_some()) {
+            let h = del.synced_hash.clone().expect("filtered");
+            if let Some(add) = adds.remove(&h) {
+                self.publish_rename(del.clone(), add.clone()).await?;
+                renamed_targets.insert(add.path.clone());
+                renamed_targets.insert(del.path.clone());
+            }
+        }
+        for row in dirty.into_iter().filter(|r| !renamed_targets.contains(&r.path)) {
+            if let Err(e) = self.publish_one(row.clone()).await {
+                if e.is::<IdentityCollision>() {
+                    return Err(e);
+                }
+                warn!("could not publish {}: {e:#}", row.path);
+            }
+        }
+        Ok(())
+    }
+
+    async fn publish_one(&mut self, mut row: FileRow) -> Result<()> {
+        match row.local_hash.clone() {
+            None => {
+                let Some(base) = row.synced_hash.clone() else { return Ok(()) };
+                let e = self.append(Action::Deleted, &row.path, None, None, Some(base), None, None, None).await?;
+                Self::set_head(&mut row, &e, None);
+                self.state.put(&row)?;
+                self.report.deleted_remote += 1;
+            }
+            Some(_) => {
+                let abs = paths::to_abs(&self.root, &row.path)?;
+                let tmp_enc = self.profile.tmp_dir().join(format!("{}.enc", uuid::Uuid::new_v4()));
+                let blob = crypto::encrypt_file(&self.keys, &abs, &tmp_enc);
+                let blob = match blob {
+                    Ok(b) => b,
+                    Err(err) => {
+                        let _ = std::fs::remove_file(&tmp_enc);
+                        return Err(err);
+                    }
+                };
+                let hash = hex::encode(blob.plain_hash);
+                let st = stat(&abs).ok_or_else(|| anyhow!("{} disappeared", row.path))?;
+                row.local_hash = Some(hash.clone());
+                row.local_size = Some(st.size);
+                row.local_mtime_ns = Some(st.mtime_ns);
+                if row.synced_hash.as_deref() == Some(hash.as_str()) {
+                    let _ = std::fs::remove_file(&tmp_enc);
+                    return self.state.put(&row); // edited back to the synced content
+                }
+                let key = journal::blob_key(&blob.blob_id);
+                let up = async {
+                    if !self.storage.exists(&key).await? {
+                        self.storage.put_file(&key, &tmp_enc).await?;
+                    }
+                    anyhow::Ok(())
+                }
+                .await;
+                let _ = std::fs::remove_file(&tmp_enc);
+                up?;
+                let action = if row.synced_hash.is_none() { Action::Added } else { Action::Modified };
+                let mtime_ms = st.mtime_ns / 1_000_000;
+                let e = self
+                    .append(action, &row.path, None, Some(hash.clone()), row.synced_hash.clone(), Some(st.size), Some(mtime_ms), Some(blob.blob_id))
+                    .await?;
+                Self::set_head(&mut row, &e, Some(&hash));
+                self.state.put(&row)?;
+                self.report.uploaded += 1;
+            }
+        }
+        Ok(())
+    }
+
+    async fn publish_rename(&mut self, mut del: FileRow, mut add: FileRow) -> Result<()> {
+        let hash = del.synced_hash.clone().expect("rename source is synced");
+        let blob_id = match del.blob_id.clone() {
+            Some(b) => b,
+            None => self.keys.blob_id(&decode_hash(&hash)?),
+        };
+        let size = add.local_size;
+        let mtime_ms = add.local_mtime_ns.map(|n| n / 1_000_000);
+        let e = self
+            .append(Action::Renamed, &add.path, Some(del.path.clone()), Some(hash.clone()), Some(hash.clone()), size, mtime_ms, Some(blob_id))
+            .await?;
+        Self::set_head(&mut del, &e, None);
+        Self::set_head(&mut add, &e, Some(&hash));
+        self.state.put(&del)?;
+        self.state.put(&add)?;
+        self.report.renamed_remote += 1;
+        Ok(())
+    }
+
+    /// Seal and write the next journal entry. Never overwrites (If-None-Match: *).
+    #[allow(clippy::too_many_arguments)]
+    async fn append(
+        &mut self,
+        action: Action,
+        path: &str,
+        old_path: Option<String>,
+        hash: Option<String>,
+        base_hash: Option<String>,
+        size: Option<u64>,
+        mtime_ms: Option<i64>,
+        blob_id: Option<String>,
+    ) -> Result<JournalEntry> {
+        let seq = self.state.meta_u64("next_seq")?.max(1);
+        let entry = JournalEntry {
+            v: 1,
+            device_id: self.cfg.device_id.clone(),
+            device_name: self.cfg.device_name.clone(),
+            seq,
+            lamport: self.next_lamport()?,
+            action,
+            path: path.to_string(),
+            old_path,
+            hash,
+            base_hash: if action == Action::Added { None } else { base_hash },
+            size,
+            mtime_ms,
+            blob_id,
+        };
+        entry.validate()?;
+        let key = entry.object_key();
+        let sealed = self.keys.seal(&serde_json::to_vec(&entry)?, &key)?;
+        match self.storage.put_bytes_if_absent(&key, sealed).await {
+            Ok(()) => {}
+            Err(PutIfAbsentError::Exists) => return Err(IdentityCollision(key).into()),
+            Err(PutIfAbsentError::Other(e)) => return Err(e),
+        }
+        self.state.set_meta("next_seq", &(seq + 1).to_string())?;
+        self.state.set_cursor(&self.cfg.device_id, seq)?;
+        info!("{:?} {}", action, path);
+        Ok(entry)
+    }
+}
+
+/// Fetch the vault (creating it if the bucket is fresh) and return the master key.
+pub async fn unlock_or_create_vault(storage: &Storage, passphrase: &str, create_params: (u32, u32)) -> Result<(SecretKey, String, bool)> {
+    if let Some(bytes) = storage.get_bytes(journal::VAULT_KEY).await? {
+        let vault: Vault = serde_json::from_slice(&bytes).context("rb/vault.json is not a RenegadeBox vault")?;
+        let master = vault.unlock(passphrase)?;
+        return Ok((master, crypto::sha256_hex(&bytes), false));
+    }
+    let master = SecretKey::random();
+    let vault = Vault::create(&master, passphrase, create_params.0, create_params.1)?;
+    let bytes = serde_json::to_vec_pretty(&vault)?;
+    match storage.put_bytes_if_absent(journal::VAULT_KEY, bytes.clone()).await {
+        Ok(()) => Ok((master, hex::encode(Sha256::digest(&bytes)), true)),
+        Err(PutIfAbsentError::Exists) => bail!("another device created the vault at the same moment; run init again"),
+        Err(PutIfAbsentError::Other(e)) => Err(e),
+    }
+}
