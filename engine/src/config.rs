@@ -46,6 +46,9 @@ impl Profile {
         };
         std::fs::create_dir_all(&dir).with_context(|| format!("create profile dir {}", dir.display()))?;
         std::fs::create_dir_all(dir.join("tmp"))?;
+        // Canonicalize so containment checks against the sync folder see through
+        // relative paths and symlinks.
+        let dir = dir.canonicalize().with_context(|| format!("resolve profile dir {}", dir.display()))?;
         Ok(Self { dir })
     }
     pub fn config_path(&self) -> PathBuf {

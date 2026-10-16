@@ -273,7 +273,38 @@ impl Engine {
     // ------------------------------------------------------------------ pull
 
     /// Fetch every new journal entry from other devices and apply them in global order.
+    /// Crash recovery for `append`: a previous run may have committed a journal entry and
+    /// died before recording it locally. Once committed, other devices treat that entry as
+    /// authoritative, so this device must too — otherwise it can stay on the old version
+    /// forever (pull never reads our own journal). If the slot holds exactly the bytes we
+    /// recorded as pending, replay the entry through the normal apply path; any local
+    /// content it would replace is preserved by the usual conflict rules.
+    async fn recover_pending_append(&mut self) -> Result<()> {
+        let Some(pending) = self.state.meta("pending_append")?.filter(|p| !p.is_empty()) else { return Ok(()) };
+        let Some((pseq, digest)) = pending.split_once(':') else { return self.state.set_meta("pending_append", "") };
+        let Ok(seq) = pseq.parse::<u64>() else { return self.state.set_meta("pending_append", "") };
+        if seq < self.state.meta_u64("next_seq")?.max(1) {
+            return self.state.set_meta("pending_append", ""); // already recorded
+        }
+        let key = journal::journal_key(&self.cfg.device_id, seq);
+        match self.storage.get_bytes(&key).await? {
+            None => {} // the PUT never landed; the change is still dirty and will be re-published
+            Some(existing) if crypto::sha256_hex(&existing) == digest => {
+                let entry: JournalEntry = serde_json::from_slice(&self.keys.open(&existing, &key)?)?;
+                entry.validate()?;
+                info!("recovering journal entry {seq} ({:?} {}) committed before an interrupted run", entry.action, entry.path);
+                self.state.set_meta("next_seq", &(seq + 1).to_string())?;
+                self.state.set_cursor(&self.cfg.device_id, seq)?;
+                self.observe_lamport(entry.lamport)?;
+                self.apply(&entry).await?;
+            }
+            Some(_) => return Err(IdentityCollision(key).into()),
+        }
+        self.state.set_meta("pending_append", "")
+    }
+
     pub async fn pull(&mut self) -> Result<()> {
+        self.recover_pending_append().await?;
         let mut batch: Vec<JournalEntry> = Vec::new();
         for prefix in self.storage.list_prefixes(journal::JOURNAL_PREFIX).await? {
             let device = prefix.trim_start_matches(journal::JOURNAL_PREFIX).trim_end_matches('/').to_string();
@@ -675,25 +706,7 @@ impl Engine {
         mtime_ms: Option<i64>,
         blob_id: Option<String>,
     ) -> Result<JournalEntry> {
-        let mut seq = self.state.meta_u64("next_seq")?.max(1);
-        // Crash recovery: a previous run may have written this slot and died before
-        // recording it. If the object there is byte-identical to what we recorded as
-        // pending, it is ours — adopt it and move on. (The change it described is still
-        // dirty locally and gets re-published below; a duplicate entry is harmless.)
-        if let Some(pending) = self.state.meta("pending_append")?
-            && let Some((pseq, digest)) = pending.split_once(':')
-            && pseq.parse::<u64>().ok() == Some(seq)
-        {
-            let key = journal::journal_key(&self.cfg.device_id, seq);
-            if let Some(existing) = self.storage.get_bytes(&key).await?
-                && crypto::sha256_hex(&existing) == digest
-            {
-                info!("recovered journal slot {seq} written before an interrupted run");
-                self.state.set_cursor(&self.cfg.device_id, seq)?;
-                seq += 1;
-                self.state.set_meta("next_seq", &seq.to_string())?;
-            }
-        }
+        let seq = self.state.meta_u64("next_seq")?.max(1);
         let entry = JournalEntry {
             v: 1,
             device_id: self.cfg.device_id.clone(),
@@ -726,8 +739,14 @@ impl Engine {
             }
             Err(PutIfAbsentError::Other(e)) => return Err(e),
         }
+        // Fault injection for the crash-recovery test (scripts/e2e.ts): die after the
+        // entry is committed but before any local state records it.
+        if std::env::var_os("RBOX_FAULT_CRASH_AFTER_JOURNAL_PUT").is_some() {
+            std::process::exit(99);
+        }
         self.state.set_meta("next_seq", &(seq + 1).to_string())?;
         self.state.set_cursor(&self.cfg.device_id, seq)?;
+        self.state.set_meta("pending_append", "")?;
         info!("{:?} {}", action, path);
         Ok(entry)
     }

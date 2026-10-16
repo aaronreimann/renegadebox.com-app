@@ -240,6 +240,28 @@ check("Review#3 file-vs-folder: sync does not stall", collide.exitCode === 0, co
 check("Review#3 file-vs-folder: both contents survive and converge",
   sameTree("a", "b") && contents("a").has(hashOf("a plain file called Reports")) && read("a", "Reports/q1.txt") === "q1 numbers");
 
+// --- regression (Cato critical): crash after journal PUT, then the user reverts the file
+write("a", "ledger.txt", "H0");
+await rbox("a", "sync");
+await rbox("b", "sync");
+write("a", "ledger.txt", "H1 committed then crashed");
+const crashed = await $`${BIN} sync`.env({ ...env("a"), RBOX_FAULT_CRASH_AFTER_JOURNAL_PUT: "1" }).nothrow().quiet();
+check("Cato#1 fault injection crashed after PUT", crashed.exitCode === 99);
+write("a", "ledger.txt", "H0"); // user reverts before the next run
+await rbox("a", "sync");
+await rbox("b", "sync");
+await rbox("a", "sync");
+check("Cato#1 committed entry recovered: devices converge", sameTree("a", "b") && read("b", "ledger.txt") === "H1 committed then crashed", `A=${read("a", "ledger.txt")} B=${read("b", "ledger.txt")}`);
+
+// --- regression (Cato warning): a relative RBOX_HOME inside the sync folder is refused
+const nested = await $`${BIN} init --folder box --bucket ${BUCKET} --endpoint ${ENDPOINT} --access-key-id dev --device-name Nested --insecure-file-keystore --kdf-memory-kib 8192`
+  .cwd(join(T, "a"))
+  .env({ ...env("a"), RBOX_HOME: "box/.profile" })
+  .nothrow()
+  .quiet();
+check("Cato#2 profile inside sync folder refused", nested.exitCode !== 0 && nested.stderr.toString().includes("must not contain each other"));
+rmSync(join(box("a"), ".profile"), { recursive: true, force: true });
+
 // --- leak probe: nothing in the bucket may contain a plaintext name or content
 const names = ["Private", "Reports", "finances", "Documents", "Taxes", "receipt", "holiday", "Lisbon", "notes", "plan", "watched", "Laptop", "Desktop", "Q3 numbers", "coffee"];
 const objects = await listAll("");
