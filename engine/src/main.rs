@@ -63,6 +63,14 @@ fn passphrase(confirm: bool) -> Result<String> {
     if let Ok(p) = std::env::var("RBOX_PASSPHRASE") {
         return Ok(p);
     }
+    if confirm {
+        eprintln!(
+            "\nChoose an encryption passphrase (12+ characters). Your files are encrypted with it before they\n\
+             leave this computer. Every new device needs it to join, and it cannot be recovered if lost."
+        );
+    } else {
+        eprintln!("\nThis bucket already has RenegadeBox files. Enter the encryption passphrase you chose on your first device.");
+    }
     let p = rpassword::prompt_password("Encryption passphrase: ")?;
     if confirm {
         if p.chars().count() < 12 {
@@ -110,7 +118,15 @@ async fn main() -> Result<()> {
             config::validate_device_name(&device_name)?;
             let secret = match secret_access_key {
                 Some(s) => s,
-                None => rpassword::prompt_password("S3 secret access key: ")?,
+                None => {
+                    eprintln!(
+                        "Your storage provider (AWS, Cloudflare R2, Backblaze B2...) gives you two keys: an access key ID\n\
+                         (passed as --access-key-id) and a secret access key that goes with it. Paste the secret below;\n\
+                         it is stored in your OS keychain and never sent anywhere else.\n\
+                         (Local test server from docker compose: any value works, e.g. \"dev\".)"
+                    );
+                    rpassword::prompt_password("Secret access key: ")?
+                }
             };
             let mut cfg = Config {
                 folder,
