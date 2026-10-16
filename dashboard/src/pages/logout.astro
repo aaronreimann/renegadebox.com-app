@@ -1,0 +1,6 @@
+---
+import { destroySession } from "../lib/auth.js";
+
+await destroySession(Astro.cookies);
+return Astro.redirect("/login");
+---

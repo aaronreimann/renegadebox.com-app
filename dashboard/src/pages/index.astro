@@ -1,0 +1,229 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getSessionAccount } from "../lib/auth.js";
+import { listDevices, createDevice, revokeDevice, type DeviceInfo } from "../lib/devices.js";
+
+const user = await getSessionAccount(Astro.cookies);
+if (!user) {
+  return Astro.redirect("/login");
+}
+
+let newlyCreatedDevice: { id: string; name: string; rawToken: string } | null = null;
+let error = "";
+let successMessage = "";
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const action = formData.get("action");
+
+  if (action === "create_device") {
+    const deviceName = String(formData.get("device_name") || "").trim();
+    if (!deviceName) {
+      error = "Please enter a device name (e.g., 'Work MacBook' or 'Home Linux').";
+    } else {
+      try {
+        newlyCreatedDevice = await createDevice(user.id, deviceName);
+        successMessage = `Device "${newlyCreatedDevice.name}" registered successfully.`;
+      } catch (err: any) {
+        error = "Failed to register new device. Please try again.";
+        console.error("Create device error:", err);
+      }
+    }
+  } else if (action === "revoke_device") {
+    const deviceId = String(formData.get("device_id") || "").trim();
+    if (deviceId) {
+      try {
+        const revoked = await revokeDevice(user.id, deviceId);
+        if (revoked) {
+          successMessage = "Device revoked and disconnected from the Hub.";
+        }
+      } catch (err: any) {
+        error = "Failed to revoke device.";
+        console.error("Revoke device error:", err);
+      }
+    }
+  }
+}
+
+const devices = await listDevices(user.id);
+---
+
+<Layout title="Connected Devices" user={user}>
+  <div style="display: flex; flex-direction: column; gap: 2rem;">
+    <!-- Header -->
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <h1 style="font-size: 1.75rem; margin-bottom: 0.25rem;">Connected Devices</h1>
+        <p style="color: var(--text-secondary); font-size: 0.9375rem;">
+          Manage the devices authorized to sync with your RenegadeBox account.
+        </p>
+      </div>
+
+      <a href="#new-device-form" class="btn btn-primary">
+        + Register New Device
+      </a>
+    </div>
+
+    {error && (
+      <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.5rem; padding: 0.875rem 1rem; color: #fca5a5; font-size: 0.875rem;">
+        {error}
+      </div>
+    )}
+
+    {successMessage && !newlyCreatedDevice && (
+      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 0.5rem; padding: 0.875rem 1rem; color: #6ee7b7; font-size: 0.875rem;">
+        {successMessage}
+      </div>
+    )}
+
+    <!-- Newly Created Device Callout (Shown ONCE) -->
+    {newlyCreatedDevice && (
+      <div style="background: #111d2e; border: 1px solid #1e3a8a; border-radius: 0.75rem; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; color: #60a5fa; font-weight: 600;">
+          <svg style="width: 1.25rem; height: 1.25rem;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Device Registered: {newlyCreatedDevice.name}
+        </div>
+
+        <p style="font-size: 0.875rem; color: #bfdbfe;">
+          Save this device token now. For security, <strong>it will never be displayed again</strong>.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <label style="color: #93c5fd; font-size: 0.8125rem;">Device Token (256-bit CSPRNG token)</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input
+              type="text"
+              id="raw-token-input"
+              readonly
+              value={newlyCreatedDevice.rawToken}
+              style="font-family: var(--font-mono); background: #070d18; border-color: #1e3a8a; color: #93c5fd; font-size: 0.8125rem;"
+            />
+            <button
+              type="button"
+              id="copy-token-btn"
+              class="btn btn-secondary"
+              style="white-space: nowrap;"
+              onclick="navigator.clipboard.writeText(document.getElementById('raw-token-input').value); this.innerText = 'Copied!';"
+            >
+              Copy Token
+            </button>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+          <label style="color: #93c5fd; font-size: 0.8125rem;">Device UUID</label>
+          <input
+            type="text"
+            readonly
+            value={newlyCreatedDevice.id}
+            style="font-family: var(--font-mono); background: #070d18; border-color: #1e3a8a; color: #93c5fd; font-size: 0.8125rem;"
+          />
+        </div>
+      </div>
+    )}
+
+    <!-- Device List Table -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+        <h2 style="font-size: 1.125rem;">Registered Devices ({devices.length})</h2>
+      </div>
+
+      {devices.length === 0 ? (
+        <div style="padding: 3rem 1.5rem; text-align: center; color: var(--text-muted);">
+          <p style="font-size: 1rem; margin-bottom: 0.5rem;">No devices registered yet.</p>
+          <p style="font-size: 0.875rem;">Register a device below to start syncing.</p>
+        </div>
+      ) : (
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-secondary); background: var(--bg-surface-elevated);">
+                <th style="padding: 0.75rem 1.5rem; font-weight: 500;">Device Name</th>
+                <th style="padding: 0.75rem 1.5rem; font-weight: 500;">Status</th>
+                <th style="padding: 0.75rem 1.5rem; font-weight: 500;">Client Version</th>
+                <th style="padding: 0.75rem 1.5rem; font-weight: 500;">Last Seen</th>
+                <th style="padding: 0.75rem 1.5rem; font-weight: 500;">Registered</th>
+                <th style="padding: 0.75rem 1.5rem; font-weight: 500; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devices.map((device) => {
+                const isRevoked = Boolean(device.revoked_at);
+                return (
+                  <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 1rem 1.5rem;">
+                      <div style="font-weight: 600; color: var(--text-primary);">{device.name}</div>
+                      <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 0.125rem;">
+                        {device.id}
+                      </div>
+                    </td>
+                    <td style="padding: 1rem 1.5rem;">
+                      {isRevoked ? (
+                        <span style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background: rgba(239, 68, 68, 0.1); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2);">
+                          <span style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: #ef4444;"></span>
+                          Revoked
+                        </span>
+                      ) : (
+                        <span style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2);">
+                          <span style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: #10b981;"></span>
+                          Active
+                        </span>
+                      )}
+                    </td>
+                    <td style="padding: 1rem 1.5rem; color: var(--text-secondary);">
+                      {device.client_version || "—"}
+                    </td>
+                    <td style="padding: 1rem 1.5rem; color: var(--text-secondary);">
+                      {new Date(device.last_seen_at).toLocaleString()}
+                    </td>
+                    <td style="padding: 1rem 1.5rem; color: var(--text-muted);">
+                      {new Date(device.created_at).toLocaleDateString()}
+                    </td>
+                    <td style="padding: 1rem 1.5rem; text-align: right;">
+                      {!isRevoked && (
+                        <form method="POST" style="display: inline;" onsubmit="return confirm('Revoke this device? It will be immediately disconnected from the Hub.');">
+                          <input type="hidden" name="action" value="revoke_device" />
+                          <input type="hidden" name="device_id" value={device.id} />
+                          <button type="submit" class="btn btn-danger" style="padding: 0.25rem 0.625rem; font-size: 0.75rem;">
+                            Revoke
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+
+    <!-- Register Device Form -->
+    <div id="new-device-form" class="card">
+      <h2 style="font-size: 1.125rem; margin-bottom: 0.5rem;">Register New Device</h2>
+      <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
+        Generate an authorization token to link a new desktop client to your account.
+      </p>
+
+      <form method="POST" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+        <input type="hidden" name="action" value="create_device" />
+        <div style="flex: 1; min-width: 250px;">
+          <label for="device_name">Device Name</label>
+          <input
+            type="text"
+            id="device_name"
+            name="device_name"
+            placeholder="e.g., MacBook Air, Linux Workstation"
+            required
+          />
+        </div>
+        <button type="submit" class="btn btn-primary" style="padding: 0.625rem 1.25rem;">
+          Generate Device Token
+        </button>
+      </form>
+    </div>
+  </div>
+</Layout>

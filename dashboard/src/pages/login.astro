@@ -1,0 +1,97 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { sql } from "../lib/db.js";
+import { verifyPassword, createSession, getSessionAccount } from "../lib/auth.js";
+
+// If already logged in, redirect to dashboard home
+const existingUser = await getSessionAccount(Astro.cookies);
+if (existingUser) {
+  return Astro.redirect("/");
+}
+
+let error = "";
+
+if (Astro.request.method === "POST") {
+  const formData = await Astro.request.formData();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "");
+
+  if (!email || !password) {
+    error = "Please enter both your email and password.";
+  } else {
+    try {
+      const [account] = await sql`
+        SELECT id, email, password_hash
+        FROM accounts
+        WHERE email = ${email}
+      `;
+
+      if (!account || !(await verifyPassword(password, account.password_hash))) {
+        error = "Invalid email or password.";
+      } else {
+        await createSession(account.id, Astro.cookies);
+        return Astro.redirect("/");
+      }
+    } catch (err: any) {
+      error = err?.message ? `Login error: ${err.message}` : "An unexpected error occurred during login. Please try again.";
+      console.error("Login error:", err);
+    }
+  }
+}
+---
+
+<Layout title="Log In">
+  <div style="max-width: 420px; margin: 3rem auto;">
+    <div class="card">
+      <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Welcome Back</h1>
+        <p style="font-size: 0.875rem; color: var(--text-secondary);">
+          Log in to manage your RenegadeBox devices
+        </p>
+      </div>
+
+      {error && (
+        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 0.5rem; padding: 0.75rem 1rem; color: #fca5a5; font-size: 0.875rem; margin-bottom: 1.5rem;">
+          {error}
+        </div>
+      )}
+
+      <form method="POST" style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <div>
+          <label for="email">Email address</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="you@domain.com"
+            required
+            autocomplete="email"
+          />
+        </div>
+
+        <div>
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="••••••••"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">
+          Log In
+        </button>
+      </form>
+
+      <div style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: var(--text-secondary);">
+        Need an account?{" "}
+        <a href="/signup" style="color: var(--accent); text-decoration: none; font-weight: 500;">
+          Create one now
+        </a>
+      </div>
+    </div>
+  </div>
+</Layout>
