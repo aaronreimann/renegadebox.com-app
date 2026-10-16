@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State as TauriState};
 
@@ -24,17 +24,6 @@ pub struct VaultStatus {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct FileItem {
-    pub path: String,
-    pub size: u64,
-    pub status: String, // "synced", "pending_upload", "conflicted", "deleted"
-    pub mtime_ns: i64,
-    pub blob_id: Option<String>,
-    pub hash: Option<String>,
-    pub is_dir: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SyncResult {
     pub success: bool,
     pub message: String,
@@ -45,20 +34,77 @@ pub struct SyncResult {
 }
 
 pub enum SyncRequest {
-    Trigger(Option<tokio::sync::oneshot::Sender<SyncResult>>),
+    Trigger,
+}
+
+/// What the watcher is doing right now; read by the popover through `get_sync_overview`.
+#[derive(Default, Debug)]
+pub struct SyncRuntime {
+    pub syncing: bool,
+    pub last_error: Option<String>,
+    pub consecutive_failures: u32,
 }
 
 #[derive(Clone)]
 pub struct WatcherHandle {
     pub tx: tokio::sync::mpsc::UnboundedSender<SyncRequest>,
     pub paused: Arc<AtomicBool>,
+    pub runtime: Arc<Mutex<SyncRuntime>>,
+}
+
+/// Failed sync attempts in a row before we interrupt the user with a notification.
+const NOTIFY_AFTER_FAILURES: u32 = 2;
+
+/// Show an OS notification. Reserved for conflicts and persistent errors; routine syncing stays silent.
+fn notify_user(title: &str, body: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!("display notification \"{}\" with title \"{}\"", esc(body), esc(title));
+        let _ = std::process::Command::new("osascript").args(["-e", &script]).spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    eprintln!("[Notify] {title}: {body}");
+}
+
+fn record_failure(app: &AppHandle, runtime: &Mutex<SyncRuntime>, err: String) {
+    let failures = {
+        let mut rt = runtime.lock().unwrap();
+        rt.syncing = false;
+        rt.last_error = Some(err);
+        rt.consecutive_failures += 1;
+        rt.consecutive_failures
+    };
+    if failures == NOTIFY_AFTER_FAILURES {
+        notify_user(
+            "RenegadeBox can't sync right now",
+            "Click the RenegadeBox icon in the menu bar for details.",
+        );
+    }
+    let _ = app.emit("status-changed", ());
+}
+
+fn record_success(app: &AppHandle, runtime: &Mutex<SyncRuntime>) {
+    let changed = {
+        let mut rt = runtime.lock().unwrap();
+        let changed = rt.syncing || rt.last_error.is_some();
+        rt.syncing = false;
+        rt.last_error = None;
+        rt.consecutive_failures = 0;
+        changed
+    };
+    if changed {
+        let _ = app.emit("status-changed", ());
+    }
 }
 
 pub async fn run_background_watcher(
     app: AppHandle,
     mut rx: tokio::sync::mpsc::UnboundedReceiver<SyncRequest>,
-    paused: Arc<AtomicBool>,
+    handle: WatcherHandle,
 ) {
+    let paused = handle.paused.clone();
+    let runtime = handle.runtime.clone();
     loop {
         let profile = match Profile::locate() {
             Ok(p) => p,
@@ -69,7 +115,10 @@ pub async fn run_background_watcher(
         };
 
         if !profile.config_path().exists() {
-            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            tokio::select! {
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(3)) => {}
+                Some(_) = rx.recv() => {}
+            }
             continue;
         }
 
@@ -77,7 +126,8 @@ pub async fn run_background_watcher(
             Ok(e) => e,
             Err(err) => {
                 eprintln!("[Watcher] Engine authorization or initialization deferred: {err:#}");
-                // Back off significantly and wait for explicit trigger instead of spamming Keychain popups
+                record_failure(&app, &runtime, format!("{err:#}"));
+                // Back off and wait for an explicit trigger instead of repeating keychain prompts.
                 tokio::select! {
                     _ = tokio::time::sleep(tokio::time::Duration::from_secs(60)) => {}
                     Some(_) = rx.recv() => {}
@@ -106,6 +156,7 @@ pub async fn run_background_watcher(
 
         if let Err(e) = debouncer.watch(engine.root(), notify::RecursiveMode::Recursive) {
             eprintln!("[Watcher] Failed to watch {}: {e:#}", engine.root().display());
+            record_failure(&app, &runtime, format!("sync folder {} is missing: {e:#}", engine.root().display()));
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             continue;
         }
@@ -115,41 +166,39 @@ pub async fn run_background_watcher(
 
         let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(15));
         loop {
-            let mut manual_reply = None;
+            let mut manual = false;
             tokio::select! {
                 _ = poll_interval.tick() => {}
                 Some(()) = fs_rx.recv() => {
                     // Drain any queued events to coalesce bursts
                     while fs_rx.try_recv().is_ok() {}
                 }
-                Some(req) = rx.recv() => {
-                    match req {
-                        SyncRequest::Trigger(reply) => {
-                            manual_reply = reply;
-                        }
-                    }
+                Some(SyncRequest::Trigger) = rx.recv() => {
+                    manual = true;
                 }
             }
 
-            let is_paused = paused.load(Ordering::SeqCst);
-            if is_paused && manual_reply.is_none() {
-                // When paused, skip auto-sync on timer/FSEvents unless user explicitly clicked Sync Now
+            if paused.load(Ordering::SeqCst) && !manual {
+                continue;
+            }
+            if paused.load(Ordering::SeqCst) {
+                // Resolving a conflict while paused only refreshes the UI; it does not sync.
+                let _ = app.emit("status-changed", ());
                 continue;
             }
 
+            runtime.lock().unwrap().syncing = true;
             let _ = app.emit("sync-started", ());
             match engine.sync_once().await {
                 Ok(report) => {
-                    let result = SyncResult {
-                        success: report.failed == 0,
-                        message: format!("{report}"),
-                        uploaded: report.uploaded,
-                        downloaded: report.downloaded,
-                        conflicts: report.conflicts,
-                        failed: report.failed,
-                    };
-                    if let Some(reply) = manual_reply {
-                        let _ = reply.send(result.clone());
+                    record_success(&app, &runtime);
+                    if report.conflicts > 0 {
+                        let body = if report.conflicts == 1 {
+                            "1 file needs your attention. It was changed in two places at once.".to_string()
+                        } else {
+                            format!("{} files need your attention. They were changed in two places at once.", report.conflicts)
+                        };
+                        notify_user("RenegadeBox", &body);
                     }
                     if report.uploaded > 0
                         || report.downloaded > 0
@@ -158,22 +207,22 @@ pub async fn run_background_watcher(
                         || report.renamed_remote > 0
                     {
                         eprintln!("[Watcher] Auto-synced changes: {report}");
+                        let result = SyncResult {
+                            success: report.failed == 0,
+                            message: format!("{report}"),
+                            uploaded: report.uploaded,
+                            downloaded: report.downloaded,
+                            conflicts: report.conflicts,
+                            failed: report.failed,
+                        };
                         let _ = app.emit("vault-changed", ());
                         let _ = app.emit("sync-finished", result);
                     }
+                    let _ = app.emit("status-changed", ());
                 }
                 Err(e) => {
                     eprintln!("[Watcher] Auto-sync cycle warning: {e:#}");
-                    if let Some(reply) = manual_reply {
-                        let _ = reply.send(SyncResult {
-                            success: false,
-                            message: format!("Sync error: {e:#}"),
-                            uploaded: 0,
-                            downloaded: 0,
-                            conflicts: 0,
-                            failed: 1,
-                        });
-                    }
+                    record_failure(&app, &runtime, format!("{e:#}"));
                 }
             }
 
@@ -208,20 +257,19 @@ pub async fn get_vault_status() -> Result<VaultStatus, String> {
     let mut pending_changes = 0;
     let mut total_bytes = 0;
 
-    if profile.state_path().exists() {
-        if let Ok(state) = State::open(&profile.state_path()) {
-            if let Ok(files) = state.all() {
-                for f in &files {
-                    if f.local_hash.is_some() {
-                        total_files += 1;
-                        if let Some(s) = f.local_size {
-                            total_bytes += s;
-                        }
-                    }
-                    if f.is_dirty() {
-                        pending_changes += 1;
-                    }
+    if profile.state_path().exists()
+        && let Ok(state) = State::open(&profile.state_path())
+        && let Ok(files) = state.all()
+    {
+        for f in &files {
+            if f.local_hash.is_some() {
+                total_files += 1;
+                if let Some(s) = f.local_size {
+                    total_bytes += s;
                 }
+            }
+            if f.is_dirty() {
+                pending_changes += 1;
             }
         }
     }
@@ -247,33 +295,170 @@ pub async fn get_vault_status() -> Result<VaultStatus, String> {
     })
 }
 
-#[tauri::command]
-pub async fn trigger_sync(state: TauriState<'_, WatcherHandle>) -> Result<SyncResult, String> {
-    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    state
-        .tx
-        .send(SyncRequest::Trigger(Some(reply_tx)))
-        .map_err(|e| format!("Failed to send trigger to watcher: {e}"))?;
+/// Everything the popover status line needs, in one call.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SyncOverview {
+    pub initialized: bool,
+    pub paused: bool,
+    pub syncing: bool,
+    pub pending: usize,
+    pub conflicts: usize,
+    pub error: Option<String>,
+}
 
-    match tokio::time::timeout(std::time::Duration::from_secs(30), reply_rx).await {
-        Ok(Ok(result)) => Ok(result),
-        Ok(Err(_)) => Err("Watcher channel closed without response".to_string()),
-        Err(_) => Err("Sync timed out after 30 seconds".to_string()),
+#[tauri::command]
+pub fn get_sync_overview(state: TauriState<'_, WatcherHandle>) -> Result<SyncOverview, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let initialized = profile.config_path().exists();
+    let (mut pending, mut conflicts) = (0, 0);
+    if initialized && profile.state_path().exists() {
+        let db = State::open(&profile.state_path()).map_err(|e| e.to_string())?;
+        for row in db.all().map_err(|e| e.to_string())? {
+            if row.is_dirty() {
+                pending += 1;
+            }
+            if row.local_hash.is_some() && parse_conflict_name(&row.path).is_some() {
+                conflicts += 1;
+            }
+        }
     }
+    let rt = state.runtime.lock().unwrap();
+    Ok(SyncOverview {
+        initialized,
+        paused: state.paused.load(Ordering::SeqCst),
+        syncing: rt.syncing,
+        pending,
+        conflicts,
+        error: if initialized { rt.last_error.clone() } else { None },
+    })
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RecentFile {
+    pub path: String,
+    pub name: String,
+    pub folder: String,
+    pub modified_ms: i64,
+}
+
+fn split_path(path: &str) -> (String, String) {
+    match path.rsplit_once('/') {
+        Some((folder, name)) => (name.to_string(), folder.to_string()),
+        None => (path.to_string(), String::new()),
+    }
+}
+
+/// The most recently changed files in the sync folder (newest first), from the engine's state database.
+#[tauri::command]
+pub fn list_recent_files(limit: Option<usize>) -> Result<Vec<RecentFile>, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    if !profile.state_path().exists() {
+        return Ok(Vec::new());
+    }
+    let db = State::open(&profile.state_path()).map_err(|e| e.to_string())?;
+    let mut rows: Vec<_> = db
+        .all()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|r| r.local_hash.is_some() && parse_conflict_name(&r.path).is_none())
+        .collect();
+    rows.sort_by_key(|r| std::cmp::Reverse(r.local_mtime_ns.unwrap_or(0)));
+    Ok(rows
+        .into_iter()
+        .take(limit.unwrap_or(10).min(50))
+        .map(|r| {
+            let (name, folder) = split_path(&r.path);
+            RecentFile {
+                modified_ms: r.local_mtime_ns.unwrap_or(0) / 1_000_000,
+                path: r.path,
+                name,
+                folder,
+            }
+        })
+        .collect())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ConflictItem {
+    /// Path of the conflicted copy (what `resolve_conflict` takes).
+    pub path: String,
+    pub original_name: String,
+    pub folder: String,
+    pub device: Option<String>,
+    pub modified_ms: i64,
+}
+
+/// Parse an engine conflict copy name, e.g.
+/// `dir/report (conflicted copy from Laptop 2026-10-15 a1b2c3d4).pdf` -> (`report.pdf`, `Some("Laptop")`).
+pub fn parse_conflict_name(path: &str) -> Option<(String, Option<String>)> {
+    let (name, _) = split_path(path);
+    let start = name.find(" (conflicted copy")?;
+    let after = &name[start + " (conflicted copy".len()..];
+    let close = after.rfind(')')?;
+    let inner = &after[..close];
+    let ext = &after[close + 1..];
+    let device = inner.find("from ").and_then(|i| {
+        let mut words: Vec<&str> = inner[i + "from ".len()..].split_whitespace().collect();
+        // trailing "<date> <short id>"
+        if words.len() >= 3 {
+            words.truncate(words.len() - 2);
+            Some(words.join(" "))
+        } else {
+            None
+        }
+    });
+    Some((format!("{}{ext}", &name[..start]), device))
+}
+
+#[tauri::command]
+pub fn list_conflicts() -> Result<Vec<ConflictItem>, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    if !profile.state_path().exists() {
+        return Ok(Vec::new());
+    }
+    let db = State::open(&profile.state_path()).map_err(|e| e.to_string())?;
+    let mut out: Vec<ConflictItem> = db
+        .all()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|r| r.local_hash.is_some())
+        .filter_map(|r| {
+            let (original_name, device) = parse_conflict_name(&r.path)?;
+            let (_, folder) = split_path(&r.path);
+            Some(ConflictItem {
+                modified_ms: r.local_mtime_ns.unwrap_or(0) / 1_000_000,
+                path: r.path,
+                original_name,
+                folder,
+                device,
+            })
+        })
+        .collect();
+    out.sort_by_key(|c| std::cmp::Reverse(c.modified_ms));
+    Ok(out)
+}
+
+/// Pause or resume automatic syncing. Shared by the popover and the tray menu.
+pub fn set_paused(app: &AppHandle, handle: &WatcherHandle, paused: bool) {
+    handle.paused.store(paused, Ordering::SeqCst);
+    if paused {
+        let _ = app.emit("sync-paused", ());
+    } else {
+        let _ = app.emit("sync-resumed", ());
+        let _ = handle.tx.send(SyncRequest::Trigger);
+    }
+    let _ = app.emit("status-changed", ());
 }
 
 #[tauri::command]
 pub fn pause_sync(app: AppHandle, state: TauriState<'_, WatcherHandle>) -> Result<bool, String> {
-    state.paused.store(true, Ordering::SeqCst);
-    let _ = app.emit("sync-paused", ());
+    set_paused(&app, &state, true);
     Ok(true)
 }
 
 #[tauri::command]
 pub fn resume_sync(app: AppHandle, state: TauriState<'_, WatcherHandle>) -> Result<bool, String> {
-    state.paused.store(false, Ordering::SeqCst);
-    let _ = app.emit("sync-resumed", ());
-    let _ = state.tx.send(SyncRequest::Trigger(None));
+    set_paused(&app, &state, false);
     Ok(false)
 }
 
@@ -283,48 +468,28 @@ pub fn is_sync_paused(state: TauriState<'_, WatcherHandle>) -> Result<bool, Stri
 }
 
 #[tauri::command]
-pub async fn list_synced_files() -> Result<Vec<FileItem>, String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    if !profile.state_path().exists() {
-        return Ok(Vec::new());
-    }
+pub fn open_settings(app: AppHandle) {
+    crate::windows::open_settings(&app);
+}
 
-    let state = State::open(&profile.state_path()).map_err(|e| e.to_string())?;
-    let rows = state.all().map_err(|e| e.to_string())?;
-    let folder = profile.load().map(|c| c.folder).unwrap_or_default();
+#[tauri::command]
+pub fn open_setup(app: AppHandle) {
+    crate::windows::open_setup(&app);
+}
 
-    let mut items = Vec::new();
-    for r in rows {
-        // Skip tombstone files where neither local nor remote exists
-        if r.local_hash.is_none() && r.synced_hash.is_none() {
-            continue;
-        }
+#[tauri::command]
+pub fn hide_popover(app: AppHandle) {
+    crate::windows::hide_popover(&app);
+}
 
-        let full_path = folder.join(&r.path);
-        let is_dir = full_path.is_dir();
+#[tauri::command]
+pub fn close_window(window: tauri::WebviewWindow) {
+    let _ = window.close();
+}
 
-        let status = if r.path.contains("conflicted copy") {
-            "conflicted".to_string()
-        } else if r.is_dirty() {
-            "pending_upload".to_string()
-        } else if r.local_hash.is_none() {
-            "deleted".to_string()
-        } else {
-            "synced".to_string()
-        };
-
-        items.push(FileItem {
-            path: r.path,
-            size: r.local_size.unwrap_or(0),
-            status,
-            mtime_ns: r.local_mtime_ns.unwrap_or(0),
-            blob_id: r.blob_id,
-            hash: r.local_hash.or(r.synced_hash),
-            is_dir,
-        });
-    }
-
-    Ok(items)
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -404,112 +569,6 @@ pub fn reveal_in_finder(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn delete_file(path: String) -> Result<(), String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let cfg = profile.load().map_err(|e| e.to_string())?;
-    let target = cfg.folder.join(&path);
-
-    if !target.exists() {
-        return Err(format!("File does not exist: {}", target.display()));
-    }
-
-    // Try moving to Trash on macOS via AppleScript
-    #[cfg(target_os = "macos")]
-    {
-        let script = format!(
-            "tell application \"Finder\" to delete POSIX file \"{}\"",
-            target.to_string_lossy().replace('"', "\\\"")
-        );
-        let status = std::process::Command::new("osascript")
-            .args(["-e", &script])
-            .status();
-
-        if let Ok(s) = status {
-            if s.success() {
-                return Ok(());
-            }
-        }
-    }
-
-    // Fallback: direct removal
-    if target.is_dir() {
-        std::fs::remove_dir_all(&target).map_err(|e| format!("Failed to remove folder: {e}"))?;
-    } else {
-        std::fs::remove_file(&target).map_err(|e| format!("Failed to remove file: {e}"))?;
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn create_folder(relative_path: String) -> Result<(), String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let cfg = profile.load().map_err(|e| e.to_string())?;
-    let clean_path = relative_path.trim_start_matches('/');
-    let target = cfg.folder.join(clean_path);
-
-    std::fs::create_dir_all(&target)
-        .map_err(|e| format!("Failed to create folder {}: {e}", target.display()))?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn pick_and_import_files() -> Result<Vec<String>, String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let cfg = profile.load().map_err(|e| e.to_string())?;
-    let dest_dir = cfg.folder;
-
-    #[cfg(target_os = "macos")]
-    {
-        let script = "set chosen to choose file with prompt \"Select files to add to RenegadeBox vault\" with multiple selections allowed\n\
-                      set outList to \"\"\n\
-                      repeat with aFile in chosen\n\
-                          set outList to outList & POSIX path of aFile & \"\\n\"\n\
-                      end repeat\n\
-                      return outList";
-
-        let output = std::process::Command::new("osascript")
-            .args(["-e", script])
-            .output()
-            .map_err(|e| format!("Failed to invoke file picker: {e}"))?;
-
-        if !output.status.success() {
-            // User cancelled picker
-            return Ok(Vec::new());
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut imported = Vec::new();
-
-        for line in stdout.lines() {
-            let path_str = line.trim();
-            if path_str.is_empty() {
-                continue;
-            }
-            let src = std::path::Path::new(path_str);
-            if src.exists() {
-                if let Some(file_name) = src.file_name() {
-                    let dest = dest_dir.join(file_name);
-                    if let Err(e) = std::fs::copy(src, &dest) {
-                        eprintln!("[Import] Failed to copy {}: {e}", src.display());
-                    } else {
-                        imported.push(file_name.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-
-        return Ok(imported);
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err("Native file picker is currently available on macOS".to_string())
-    }
-}
-
-#[tauri::command]
 pub fn open_sync_folder() -> Result<(), String> {
     let profile = Profile::locate().map_err(|e| e.to_string())?;
     let cfg = profile.load().map_err(|e| e.to_string())?;
@@ -542,158 +601,66 @@ pub fn open_sync_folder() -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn open_dashboard() -> Result<(), String> {
-    let url = "http://localhost:3000";
-
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(url)
-            .spawn()
-            .map_err(|e| format!("Failed to open dashboard: {}", e))?;
+/// `report.pdf` + `" (Laptop version)"` -> `report (Laptop version).pdf`, numbered if that name is taken.
+fn free_name(dir: &std::path::Path, original: &str, suffix: &str) -> std::path::PathBuf {
+    let (stem, ext) = match original.rfind('.') {
+        Some(i) if i > 0 => (&original[..i], &original[i..]),
+        _ => (original, ""),
+    };
+    let mut candidate = dir.join(format!("{stem}{suffix}{ext}"));
+    let mut n = 2;
+    while candidate.exists() {
+        candidate = dir.join(format!("{stem}{suffix} {n}{ext}"));
+        n += 1;
     }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(url)
-            .spawn()
-            .map_err(|e| format!("Failed to open dashboard: {}", e))?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", url])
-            .spawn()
-            .map_err(|e| format!("Failed to open dashboard: {}", e))?;
-    }
-
-    Ok(())
+    candidate
 }
 
+/// Settle a conflicted copy:
+/// - `keep_both`: keep it next to the original, renamed to e.g. `report (Laptop version).pdf`
+/// - `keep_conflicted`: its contents replace the original
+/// - `keep_local`: it is removed and the original stays as is
 #[tauri::command]
-pub fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let cfg = profile.load().map_err(|e| e.to_string())?;
-    let src = cfg.folder.join(old_path.trim_start_matches('/'));
-    let dst = cfg.folder.join(new_path.trim_start_matches('/'));
-
-    if !src.exists() {
-        return Err(format!("Source file does not exist: {}", src.display()));
-    }
-    if dst.exists() {
-        return Err(format!("A file or folder named '{}' already exists", new_path));
-    }
-    if let Some(parent) = dst.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {e}"))?;
-    }
-    std::fs::rename(&src, &dst).map_err(|e| format!("Failed to rename file: {e}"))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn resolve_conflict(path: String, resolution: String) -> Result<(), String> {
+pub fn resolve_conflict(
+    app: AppHandle,
+    state: TauriState<'_, WatcherHandle>,
+    path: String,
+    resolution: String,
+) -> Result<(), String> {
     let profile = Profile::locate().map_err(|e| e.to_string())?;
     let cfg = profile.load().map_err(|e| e.to_string())?;
     let conflicted_target = cfg.folder.join(path.trim_start_matches('/'));
 
-    if !conflicted_target.exists() {
-        return Err(format!("Conflicted file does not exist: {}", conflicted_target.display()));
+    if !conflicted_target.is_file() {
+        return Err("That file is no longer there. It may already have been sorted out.".to_string());
     }
+    let (original_name, device) =
+        parse_conflict_name(&path).ok_or_else(|| "That file isn't a conflicted copy.".to_string())?;
+    let parent = conflicted_target.parent().unwrap_or(&cfg.folder).to_path_buf();
 
     match resolution.as_str() {
         "keep_local" => {
-            // Delete the conflicted copy
-            if conflicted_target.is_dir() {
-                std::fs::remove_dir_all(&conflicted_target).map_err(|e| format!("Failed to delete conflicted folder: {e}"))?;
-            } else {
-                std::fs::remove_file(&conflicted_target).map_err(|e| format!("Failed to delete conflicted file: {e}"))?;
-            }
+            std::fs::remove_file(&conflicted_target).map_err(|e| format!("Couldn't remove the other version: {e}"))?;
         }
         "keep_conflicted" => {
-            // Identify original base file name and overwrite
-            let file_name = conflicted_target.file_name().unwrap_or_default().to_string_lossy().to_string();
-            let parent = conflicted_target.parent().unwrap_or(&cfg.folder);
-            
-            let base_name = if let Some(idx) = file_name.find(" (conflicted copy") {
-                let ext = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
-                format!("{}{ext}", &file_name[..idx])
-            } else {
-                file_name.replace("conflicted", "resolved")
-            };
-            let base_target = parent.join(&base_name);
-            
-            std::fs::copy(&conflicted_target, &base_target).map_err(|e| format!("Failed to copy conflicted version over base: {e}"))?;
-            let _ = std::fs::remove_file(&conflicted_target);
+            std::fs::copy(&conflicted_target, parent.join(&original_name))
+                .map_err(|e| format!("Couldn't replace {original_name}: {e}"))?;
+            std::fs::remove_file(&conflicted_target).map_err(|e| format!("Couldn't tidy up the other version: {e}"))?;
         }
         "keep_both" => {
-            // Rename conflicted file to a clean archive name
-            let file_name = conflicted_target.file_name().unwrap_or_default().to_string_lossy().to_string();
-            let parent = conflicted_target.parent().unwrap_or(&cfg.folder);
-            let ext = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default();
-            let clean_name = if let Some(idx) = file_name.find(" (conflicted copy") {
-                format!("{} (archived copy){ext}", &file_name[..idx])
-            } else {
-                format!("{} (copy){ext}", file_name.trim_end_matches(&ext))
+            let suffix = match device {
+                Some(d) => format!(" ({d} version)"),
+                None => " (other version)".to_string(),
             };
-            let new_target = parent.join(&clean_name);
-            std::fs::rename(&conflicted_target, &new_target).map_err(|e| format!("Failed to archive conflicted file: {e}"))?;
+            let new_target = free_name(&parent, &original_name, &suffix);
+            std::fs::rename(&conflicted_target, &new_target).map_err(|e| format!("Couldn't keep both versions: {e}"))?;
         }
-        other => return Err(format!("Unknown resolution strategy: {other}")),
+        other => return Err(format!("Unknown resolution: {other}")),
     }
 
+    let _ = app.emit("vault-changed", ());
+    let _ = state.tx.send(SyncRequest::Trigger);
     Ok(())
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct FileRevision {
-    pub timestamp_ms: i64,
-    pub date_str: String,
-    pub device_name: String,
-    pub lamport: u64,
-    pub size: u64,
-    pub hash: String,
-    pub blob_id: Option<String>,
-    pub action: String,
-    pub is_current: bool,
-}
-
-#[tauri::command]
-pub async fn get_file_history(path: String) -> Result<Vec<FileRevision>, String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let mut revisions = Vec::new();
-
-    if profile.state_path().exists() {
-        if let Ok(state) = State::open(&profile.state_path()) {
-            if let Ok(Some(row)) = state.get(&path) {
-                let mtime_ms = row.local_mtime_ns.unwrap_or(0) / 1_000_000;
-                let date_str = if mtime_ms > 0 {
-                    chrono::DateTime::from_timestamp_millis(mtime_ms)
-                        .map(|dt| dt.format("%b %d, %Y %H:%M:%S UTC").to_string())
-                        .unwrap_or_else(|| "Recent".to_string())
-                } else {
-                    "Current version".to_string()
-                };
-
-                let hash = row.local_hash.or(row.synced_hash).unwrap_or_default();
-                revisions.push(FileRevision {
-                    timestamp_ms: mtime_ms,
-                    date_str,
-                    device_name: if row.head_device.is_empty() { "Current Device".to_string() } else { row.head_device },
-                    lamport: row.head_lamport,
-                    size: row.local_size.unwrap_or(0),
-                    hash,
-                    blob_id: row.blob_id,
-                    action: "Current Head".to_string(),
-                    is_current: true,
-                });
-            }
-        }
-    }
-
-    Ok(revisions)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -710,21 +677,21 @@ pub fn update_vault_config(payload: UpdateConfigPayload) -> Result<(), String> {
     let profile = Profile::locate().map_err(|e| e.to_string())?;
     let mut cfg = profile.load().map_err(|e| e.to_string())?;
 
-    if let Some(dn) = payload.device_name {
-        if !dn.trim().is_empty() {
-            renegadebox_engine::config::validate_device_name(&dn).map_err(|e| e.to_string())?;
-            cfg.device_name = dn.trim().to_string();
-        }
+    if let Some(dn) = payload.device_name
+        && !dn.trim().is_empty()
+    {
+        renegadebox_engine::config::validate_device_name(dn.trim()).map_err(|e| e.to_string())?;
+        cfg.device_name = dn.trim().to_string();
     }
-    if let Some(b) = payload.bucket {
-        if !b.trim().is_empty() {
-            cfg.bucket = b.trim().to_string();
-        }
+    if let Some(b) = payload.bucket
+        && !b.trim().is_empty()
+    {
+        cfg.bucket = b.trim().to_string();
     }
-    if let Some(r) = payload.region {
-        if !r.trim().is_empty() {
-            cfg.region = r.trim().to_string();
-        }
+    if let Some(r) = payload.region
+        && !r.trim().is_empty()
+    {
+        cfg.region = r.trim().to_string();
     }
     if let Some(ep) = payload.endpoint {
         cfg.endpoint = if ep.trim().is_empty() { None } else { Some(ep.trim().to_string()) };
@@ -736,7 +703,6 @@ pub fn update_vault_config(payload: UpdateConfigPayload) -> Result<(), String> {
     profile.save(&cfg).map_err(|e| format!("Failed to save config: {e}"))?;
     Ok(())
 }
-
 #[tauri::command]
 pub fn get_ignored_patterns() -> Result<Vec<String>, String> {
     let profile = Profile::locate().map_err(|e| e.to_string())?;
@@ -772,25 +738,6 @@ pub fn save_ignored_patterns(patterns: Vec<String>) -> Result<(), String> {
     let content = patterns.join("\n") + "\n";
     std::fs::write(&ignore_file, content).map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-pub fn export_file_copy(path: String) -> Result<String, String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let cfg = profile.load().map_err(|e| e.to_string())?;
-    let src = cfg.folder.join(path.trim_start_matches('/'));
-
-    if !src.exists() {
-        return Err(format!("File does not exist: {}", src.display()));
-    }
-
-    let file_name = src.file_name().ok_or_else(|| "Invalid file name".to_string())?;
-    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    let downloads_dir = std::path::PathBuf::from(home).join("Downloads");
-    let dst = downloads_dir.join(file_name);
-
-    std::fs::copy(&src, &dst).map_err(|e| format!("Failed to export copy: {e}"))?;
-    Ok(dst.to_string_lossy().to_string())
 }
 
 /// Move this device's secrets between the system keychain and the (unprotected) file store.
@@ -843,9 +790,9 @@ pub async fn setup_vault(
     if folder_str.is_empty() {
         return Err("Sync folder path cannot be empty".to_string());
     }
-    let expanded_folder = if folder_str.starts_with("~/") {
+    let expanded_folder = if let Some(rest) = folder_str.strip_prefix("~/") {
         let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-        std::path::PathBuf::from(home).join(&folder_str[2..])
+        std::path::PathBuf::from(home).join(rest)
     } else {
         std::path::PathBuf::from(folder_str)
     };
@@ -942,7 +889,7 @@ pub async fn setup_vault(
 
     // Signal UI and watcher
     let _ = app.emit("vault-changed", ());
-    let _ = state.tx.send(SyncRequest::Trigger(None));
+    let _ = state.tx.send(SyncRequest::Trigger);
 
     Ok(VaultStatus {
         initialized: true,
@@ -953,7 +900,7 @@ pub async fn setup_vault(
         device_id: Some(cfg.device_id),
         device_name: Some(device_name),
         hub_url,
-        key_store: Some("App-Protected Private Keystore (Zero Prompts)".to_string()),
+        key_store: Some("System keychain".to_string()),
         total_files: 0,
         pending_changes: 0,
         total_bytes: 0,
@@ -1013,30 +960,35 @@ pub fn set_autostart_enabled(enabled: bool) -> Result<bool, String> {
     }
 }
 
-#[tauri::command]
-pub fn add_to_finder_favorites(folder_path: Option<String>) -> Result<String, String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    let path = match folder_path {
-        Some(p) => std::path::PathBuf::from(p),
-        None => {
-            let cfg = profile.load().map_err(|e| e.to_string())?;
-            cfg.folder
-        }
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    if !path.exists() {
-        return Err(format!("Folder does not exist: {}", path.display()));
+    #[test]
+    fn parses_conflict_copy_names() {
+        assert_eq!(
+            parse_conflict_name("dir/report (conflicted copy from Laptop 2026-10-15 a1b2c3d4).pdf"),
+            Some(("report.pdf".to_string(), Some("Laptop".to_string())))
+        );
+        assert_eq!(
+            parse_conflict_name("Makefile (conflicted copy 2 from My MBP.local 2026-10-15 ff00ff00)"),
+            Some(("Makefile".to_string(), Some("My MBP.local".to_string())))
+        );
+        assert_eq!(
+            parse_conflict_name("Notes (conflicted copy My-MBP 2026-10-15).txt"),
+            Some(("Notes.txt".to_string(), None))
+        );
+        assert_eq!(parse_conflict_name("dir/plain.txt"), None);
     }
 
-    let script = format!(
-        r#"tell application "Finder" to open POSIX file "{}"
-tell application "Finder" to activate"#,
-        path.display()
-    );
-    let _ = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .status();
-
-    Ok(format!("Opened {} in Finder", path.display()))
+    #[test]
+    fn keep_both_picks_a_free_name() {
+        let dir = std::env::temp_dir().join(format!("rbox-free-name-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(free_name(&dir, "report.pdf", " (Laptop version)"), dir.join("report (Laptop version).pdf"));
+        std::fs::write(dir.join("report (Laptop version).pdf"), b"x").unwrap();
+        assert_eq!(free_name(&dir, "report.pdf", " (Laptop version)"), dir.join("report (Laptop version) 2.pdf"));
+        assert_eq!(free_name(&dir, ".env", " (other version)"), dir.join(".env (other version)"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

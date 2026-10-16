@@ -1,192 +1,144 @@
 pub mod commands;
+mod windows;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Listener, Manager,
+    Listener, Manager, WindowEvent,
 };
+
+const TRAY_ICON: &[u8] = include_bytes!("../icons/tray-icon@2x.png");
 
 pub fn run() {
     let (watcher_tx, watcher_rx) = tokio::sync::mpsc::unbounded_channel();
-    let paused = Arc::new(AtomicBool::new(false));
     let watcher_handle = commands::WatcherHandle {
         tx: watcher_tx,
-        paused: paused.clone(),
+        paused: Arc::new(AtomicBool::new(false)),
+        runtime: Arc::new(Mutex::new(commands::SyncRuntime::default())),
     };
+    let watcher_for_setup = watcher_handle.clone();
 
     tauri::Builder::default()
+        // Must be registered first: a second launch just brings up the popover.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            windows::show_popover(app);
+        }))
         .manage(watcher_handle)
+        .manage(windows::PopoverState::default())
         .setup(move |app| {
+            // Menu-bar app: no Dock icon, no app menu.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let watcher_app = app.handle().clone();
-            let watcher_paused = paused.clone();
             tauri::async_runtime::spawn(async move {
-                commands::run_background_watcher(watcher_app, watcher_rx, watcher_paused).await;
+                commands::run_background_watcher(watcher_app, watcher_rx, watcher_for_setup).await;
             });
 
-            // Build macOS Menu Bar Tray Menu (Pirate Theme)
-            let open_i = MenuItem::with_id(app, "open", "🏴‍☠️ Open RenegadeBox", true, None::<&str>)?;
-            let folder_i = MenuItem::with_id(app, "folder", "📂 Open Sync Folder (Booty)", true, None::<&str>)?;
-            let sep1 = PredefinedMenuItem::separator(app)?;
-            let status_i = MenuItem::with_id(app, "status", "⚓ Status: Up to date (Shipshape)", false, None::<&str>)?;
-            let sync_i = MenuItem::with_id(app, "sync", "⚡ Sync Now (Hoist Booty)", true, None::<&str>)?;
-            let pause_i = MenuItem::with_id(app, "pause", "⏸ Pause Sync", true, None::<&str>)?;
-            let sep2 = PredefinedMenuItem::separator(app)?;
-            let dashboard_i = MenuItem::with_id(app, "dashboard", "🧭 Web Dashboard...", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit RenegadeBox (Abandon Ship)", true, None::<&str>)?;
+            let folder_i = MenuItem::with_id(app, "folder", "Open RenegadeBox folder", true, None::<&str>)?;
+            let pause_i = MenuItem::with_id(app, "pause", "Pause syncing", true, None::<&str>)?;
+            let sep = PredefinedMenuItem::separator(app)?;
+            let settings_i = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit RenegadeBox", true, None::<&str>)?;
 
-            let status_item = status_i.clone();
-            let status_item_start = status_i.clone();
-            let status_item_pause = status_i.clone();
-            let status_item_resume = status_i.clone();
-            let pause_item_pause = pause_i.clone();
-            let pause_item_resume = pause_i.clone();
-
-            app.listen("sync-started", move |_| {
-                let _ = status_item_start.set_text("⚔️ Status: Hoisting booty to S3...");
-            });
-
-            app.listen("sync-finished", move |event| {
-                if let Ok(res) = serde_json::from_str::<commands::SyncResult>(event.payload()) {
-                    let msg = if res.failed > 0 {
-                        format!("⚠️ Status: Storm warning ({} failed)", res.failed)
-                    } else if res.uploaded > 0 || res.downloaded > 0 {
-                        format!("🏴‍☠️ Status: Booty stashed (↑{} / ↓{})", res.uploaded, res.downloaded)
-                    } else {
-                        "⚓ Status: Up to date (Shipshape)".to_string()
-                    };
-                    let _ = status_item.set_text(msg);
-                }
-            });
-
+            let pause_on_pause = pause_i.clone();
             app.listen("sync-paused", move |_| {
-                let _ = pause_item_pause.set_text("▶ Resume Sync");
-                let _ = status_item_pause.set_text("⏸ Status: Sync Paused");
+                let _ = pause_on_pause.set_text("Resume syncing");
             });
-
+            let pause_on_resume = pause_i.clone();
             app.listen("sync-resumed", move |_| {
-                let _ = pause_item_resume.set_text("⏸ Pause Sync");
-                let _ = status_item_resume.set_text("⚓ Status: Up to date (Shipshape)");
+                let _ = pause_on_resume.set_text("Pause syncing");
             });
 
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &open_i,
-                    &folder_i,
-                    &sep1,
-                    &status_i,
-                    &sync_i,
-                    &pause_i,
-                    &sep2,
-                    &dashboard_i,
-                    &quit_i,
-                ],
-            )?;
+            let menu = Menu::with_items(app, &[&folder_i, &pause_i, &sep, &settings_i, &quit_i])?;
 
-            let mut tray_builder = TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main")
+                .icon(Image::from_bytes(TRAY_ICON)?)
+                .icon_as_template(true)
+                .tooltip("RenegadeBox")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .tooltip("RenegadeBox — Zero-Knowledge Pirate Vault")
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "open" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "folder" => {
+                        if commands::open_sync_folder().is_err() {
+                            windows::open_setup(app);
                         }
-                        "folder" => {
-                            let _ = commands::open_sync_folder();
-                        }
-                        "sync" => {
-                            if let Some(handle) = app.try_state::<commands::WatcherHandle>() {
-                                let _ = handle.tx.send(commands::SyncRequest::Trigger(None));
-                            }
-                        }
-                        "pause" => {
-                            if let Some(handle) = app.try_state::<commands::WatcherHandle>() {
-                                let was_paused = handle.paused.load(Ordering::SeqCst);
-                                handle.paused.store(!was_paused, Ordering::SeqCst);
-                                if !was_paused {
-                                    let _ = app.emit("sync-paused", ());
-                                } else {
-                                    let _ = app.emit("sync-resumed", ());
-                                    let _ = handle.tx.send(commands::SyncRequest::Trigger(None));
-                                }
-                            }
-                        }
-                        "dashboard" => {
-                            let _ = commands::open_dashboard();
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "pause" => {
+                        let handle = app.state::<commands::WatcherHandle>();
+                        let paused = handle.paused.load(Ordering::SeqCst);
+                        commands::set_paused(app, &handle, !paused);
+                    }
+                    "settings" => windows::open_settings(app),
+                    "quit" => app.exit(0),
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
+                        rect,
                         ..
                     } = event
                     {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
+                        windows::toggle_popover(tray.app_handle(), position, rect);
                     }
-                });
+                })
+                .build(app)?;
 
-            if let Some(icon) = app.default_window_icon() {
-                tray_builder = tray_builder.icon(icon.clone()).icon_as_template(true);
+            // First run: walk through setup. Otherwise stay quietly in the menu bar.
+            let initialized = renegadebox_engine::config::Profile::locate()
+                .map(|p| p.config_path().exists())
+                .unwrap_or(false);
+            if !initialized {
+                windows::open_setup(app.handle());
             }
-
-            tray_builder.build(app)?;
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+            if window.label() != windows::POPOVER {
+                return;
+            }
+            match event {
+                // Like a menu: the popover goes away as soon as you click elsewhere.
+                WindowEvent::Focused(false) => windows::hide_popover(window.app_handle()),
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    windows::hide_popover(window.app_handle());
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_vault_status,
-            commands::trigger_sync,
+            commands::get_sync_overview,
+            commands::list_recent_files,
+            commands::list_conflicts,
+            commands::resolve_conflict,
             commands::pause_sync,
             commands::resume_sync,
             commands::is_sync_paused,
-            commands::list_synced_files,
             commands::open_sync_folder,
-            commands::open_dashboard,
             commands::open_file,
             commands::reveal_in_finder,
-            commands::delete_file,
-            commands::rename_file,
-            commands::create_folder,
-            commands::pick_and_import_files,
-            commands::resolve_conflict,
-            commands::get_file_history,
+            commands::open_settings,
+            commands::open_setup,
+            commands::hide_popover,
+            commands::close_window,
+            commands::quit_app,
             commands::update_vault_config,
             commands::get_ignored_patterns,
             commands::save_ignored_patterns,
-            commands::export_file_copy,
             commands::setup_vault,
             commands::set_key_store,
             commands::is_autostart_enabled,
-            commands::set_autostart_enabled,
-            commands::add_to_finder_favorites
+            commands::set_autostart_enabled
         ])
         .run(tauri::generate_context!())
-        .expect("error while running renegadebox desktop application");
+        .expect("error while running RenegadeBox");
 }
-

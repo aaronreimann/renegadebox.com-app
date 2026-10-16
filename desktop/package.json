@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:frontend": "bun build src/main.ts --outfile src/main.js",
+    "build:frontend": "bun build src/main.ts --outfile src/main.js --format iife",
     "dev": "bun run build:frontend && PATH=\"/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH\" tauri dev",
     "build": "bun run build:frontend && PATH=\"/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$HOME/.local/bin:$PATH\" tauri build",
-    "test": "bun test"
+    "test": "bun test",
+    "icons": "bun scripts/generate-icons.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0"
