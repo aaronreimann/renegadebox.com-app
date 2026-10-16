@@ -1,0 +1,293 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "RenegadeBox — Open-Source Zero-Knowledge S3 Folder Sync",
+  description = "Bring your own S3 storage for an end-to-end encrypted Dropbox alternative. Your bucket only ever sees ciphertext. Sub-second multi-device sync.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+
+    <!-- Google Fonts: Montserrat (Headings) and Inter (Body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <style is:global>
+      :root {
+        --font-heading: "Montserrat", -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-body: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+
+        --bg-base: #07090e;
+        --bg-surface: #0d111a;
+        --bg-elevated: #131926;
+        --bg-card: rgba(19, 25, 38, 0.7);
+
+        --border-subtle: rgba(255, 255, 255, 0.08);
+        --border-glow: rgba(56, 189, 248, 0.25);
+        --border-emerald: rgba(16, 185, 129, 0.25);
+
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+
+        --accent-cyan: #38bdf8;
+        --accent-blue: #3b82f6;
+        --accent-emerald: #10b981;
+        --accent-purple: #a855f7;
+        --accent-rose: #f43f5e;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html, body {
+        background-color: var(--bg-base);
+        color: var(--text-primary);
+        font-family: var(--font-body);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-heading);
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      code, pre {
+        font-family: var(--font-mono);
+      }
+
+      /* Glow & Ambient Background Effects */
+      .glow-mesh {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: 
+          radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+          radial-gradient(circle at 85% 20%, rgba(168, 85, 247, 0.07) 0%, transparent 45%),
+          radial-gradient(circle at 50% 75%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1.5rem;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        border: none;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+        color: #ffffff;
+        box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+      }
+
+      .btn-primary:hover {
+        background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+        box-shadow: 0 6px 20px rgba(14, 165, 233, 0.5);
+        transform: translateY(-1px);
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border-subtle);
+        color: var(--text-primary);
+        backdrop-filter: blur(8px);
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.2);
+        transform: translateY(-1px);
+      }
+
+      .btn-emerald {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        color: #ffffff;
+        box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
+        border: 1px solid rgba(52, 211, 153, 0.4);
+      }
+
+      .btn-emerald:hover {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        transform: translateY(-1px);
+      }
+
+      /* Glassmorphism Cards */
+      .glass-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 1rem;
+        backdrop-filter: blur(16px);
+        transition: all 0.3s ease;
+      }
+
+      .glass-card:hover {
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+
+      .gradient-text {
+        background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .gradient-cyan {
+        background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .gradient-emerald {
+        background: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow-mesh"></div>
+
+    <!-- Navigation Header -->
+    <header style="position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border-subtle); background: rgba(7, 9, 14, 0.85); backdrop-filter: blur(12px);">
+      <div class="container" style="display: flex; align-items: center; justify-content: space-between; height: 4.25rem;">
+        <a href="/" style="display: flex; align-items: center; gap: 0.75rem;">
+          <div style="width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; background: linear-gradient(135deg, #0284c7, #10b981); display: flex; align-items: center; justify-content: center; font-weight: 900; font-family: var(--font-heading); color: white; font-size: 1.125rem; box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);">
+            R
+          </div>
+          <span style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em;">
+            Renegade<span style="color: var(--accent-cyan);">Box</span>
+          </span>
+        </a>
+
+        <nav style="display: flex; align-items: center; gap: 1.75rem; font-size: 0.9375rem; font-weight: 500;">
+          <a href="#features" style="color: var(--text-secondary); transition: color 0.2s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Features</a>
+          <a href="#zero-knowledge" style="color: var(--text-secondary); transition: color 0.2s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Zero-Knowledge</a>
+          <a href="#wizard" style="color: var(--text-secondary); transition: color 0.2s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Provider Setup</a>
+          <a href="#comparison" style="color: var(--text-secondary); transition: color 0.2s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Comparison</a>
+          <a href="/docs" style="color: var(--text-secondary); transition: color 0.2s;" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">Docs</a>
+        </nav>
+
+        <div style="display: flex; align-items: center; gap: 0.875rem;">
+          <a href="http://localhost:3000" target="_blank" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+            Dashboard
+          </a>
+          <a href="#quickstart" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+            Install CLI
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <!-- Footer -->
+    <footer style="border-top: 1px solid var(--border-subtle); background: var(--bg-surface); margin-top: 6rem; padding: 4rem 0 2.5rem 0;">
+      <div class="container">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; margin-bottom: 3rem;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+              <div style="width: 2rem; height: 2rem; border-radius: 0.4rem; background: linear-gradient(135deg, #0284c7, #10b981); display: flex; align-items: center; justify-content: center; font-weight: 800; font-family: var(--font-heading); color: white; font-size: 1rem;">
+                R
+              </div>
+              <span style="font-family: var(--font-heading); font-size: 1.125rem; font-weight: 800;">
+                Renegade<span style="color: var(--accent-cyan);">Box</span>
+              </span>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 0.875rem; max-width: 320px; margin-bottom: 1.25rem;">
+              Open-source, end-to-end-encrypted Dropbox alternative syncing into your own S3 bucket. Zero plaintext leaks.
+            </p>
+            <div style="display: inline-block; padding: 0.25rem 0.625rem; border-radius: 9999px; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--border-emerald); color: #6ee7b7; font-size: 0.75rem; font-weight: 600;">
+              MIT Open Source License
+            </div>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 1rem;">Product</h4>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.625rem; font-size: 0.875rem; color: var(--text-secondary);">
+              <li><a href="#features">Features</a></li>
+              <li><a href="#zero-knowledge">Cryptography</a></li>
+              <li><a href="#wizard">S3 Wizard</a></li>
+              <li><a href="#comparison">Compare vs Dropbox</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 1rem;">Resources</h4>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.625rem; font-size: 0.875rem; color: var(--text-secondary);">
+              <li><a href="/docs">Documentation</a></li>
+              <li><a href="/docs/quickstart">CLI Quickstart</a></li>
+              <li><a href="/docs/architecture">Architecture Spec</a></li>
+              <li><a href="/docs/providers">AWS & R2 IAM Setup</a></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 style="font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 1rem;">Control Plane</h4>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 0.625rem; font-size: 0.875rem; color: var(--text-secondary);">
+              <li><a href="http://localhost:3000" target="_blank">Web Dashboard</a></li>
+              <li><a href="http://localhost:3000/signup" target="_blank">Create Account</a></li>
+              <li><a href="https://github.com/renegadebox/renegadebox" target="_blank">GitHub Repository</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 2rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.8125rem; color: var(--text-muted);">
+          <p>© {new Date().getFullYear()} RenegadeBox. Designed for privacy, security, and storage sovereignty.</p>
+          <p>Built with Rust, Bun, TypeScript, and Astro.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
