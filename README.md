@@ -24,7 +24,8 @@ Requires Rust (`brew install rustup && rustup default stable`, then put `$(brew 
 docker compose up -d s3 postgres
 echo "s3.bucket.create -name my-box" | docker compose exec -T s3 weed shell
 
-cargo install --path engine --root ~/.local   # installs rbox to ~/.local/bin (must be on your PATH)
+bun scripts/setup-signing.ts   # once: local code-signing identity (asks for your Mac password)
+bun scripts/install.ts          # builds + signs rbox into ~/.local/bin (add --desktop for the app)
 
 # Start Hub & Dashboard (Control Plane) & Marketing/Docs Site
 (cd hub && bun run src/index.ts) &           # ws://localhost:8787
