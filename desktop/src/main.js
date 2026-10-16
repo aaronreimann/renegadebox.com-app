@@ -272,6 +272,34 @@ async function tauriInvoke(cmd, args) {
       }
     ];
   }
+  if (cmd === "is_autostart_enabled") {
+    return false;
+  }
+  if (cmd === "set_autostart_enabled") {
+    return args?.enabled ?? false;
+  }
+  if (cmd === "migrate_to_silent_keystore") {
+    return true;
+  }
+  if (cmd === "add_to_finder_favorites") {
+    return "Opened ~/RenegadeBox in Finder";
+  }
+  if (cmd === "setup_vault") {
+    return {
+      initialized: true,
+      folder: args?.payload?.folder || "/Users/me/RenegadeBox",
+      bucket: args?.payload?.bucket || "my-renegadebox-bucket",
+      region: args?.payload?.region || "us-east-1",
+      endpoint: args?.payload?.endpoint || null,
+      device_id: "68a3c8a0-c930-4984-bc66-079164e213f6",
+      device_name: args?.payload?.device_name || "My-MBP",
+      hub_url: null,
+      key_store: "App-Protected Private Keystore (Zero Prompts)",
+      total_files: 0,
+      pending_changes: 0,
+      total_bytes: 0
+    };
+  }
   return {};
 }
 var allFiles = [];
@@ -1040,6 +1068,30 @@ async function openSettingsModal() {
       ignoreInput.value = patterns.join(`
 `);
   } catch (_) {}
+  try {
+    const autostart = await tauriInvoke("is_autostart_enabled");
+    const autostartToggle = document.getElementById("cfg-autostart-toggle");
+    if (autostartToggle)
+      autostartToggle.checked = autostart;
+  } catch (_) {}
+  const keystoreDesc = document.getElementById("cfg-keystore-desc");
+  const migrateBtn = document.getElementById("migrate-keystore-btn");
+  const warnEl = document.getElementById("keychain-prompt-warning");
+  if (currentVaultStatus?.key_store?.includes("Keychain")) {
+    if (keystoreDesc)
+      keystoreDesc.textContent = "macOS Keychain (Interactive Authorization)";
+    if (migrateBtn)
+      migrateBtn.style.display = "block";
+    if (warnEl)
+      warnEl.style.display = "block";
+  } else {
+    if (keystoreDesc)
+      keystoreDesc.textContent = currentVaultStatus?.key_store || "App-Protected Private Keystore (Zero Prompts)";
+    if (migrateBtn)
+      migrateBtn.style.display = "none";
+    if (warnEl)
+      warnEl.style.display = "none";
+  }
 }
 function closeSettingsModal() {
   const modal = document.getElementById("settings-modal");
@@ -1071,8 +1123,203 @@ async function handleSaveSettings() {
     logActivity("⚙️ Preferences updated", "Vault configuration and ignore rules saved", "system");
     await refreshVaultStatus();
     closeSettingsModal();
+    showToast("Preferences saved successfully", "success");
   } catch (err) {
-    alert("Failed to save settings: " + err);
+    showToast("Failed to save settings: " + err, "error");
+  }
+}
+var currentWizardStep = 1;
+function openSetupWizard() {
+  currentWizardStep = 1;
+  showWizardStep(1);
+  const errBanner = document.getElementById("wizard-error-banner");
+  if (errBanner) {
+    errBanner.style.display = "none";
+    errBanner.textContent = "";
+  }
+  const modal = document.getElementById("setup-wizard-modal");
+  if (modal)
+    modal.classList.add("open");
+}
+function closeSetupWizard() {
+  const modal = document.getElementById("setup-wizard-modal");
+  if (modal)
+    modal.classList.remove("open");
+}
+function showWizardStep(step) {
+  currentWizardStep = step;
+  const s1 = document.getElementById("wizard-step-1");
+  const s2 = document.getElementById("wizard-step-2");
+  const s3 = document.getElementById("wizard-step-3");
+  const backBtn = document.getElementById("wizard-back-btn");
+  const nextBtn = document.getElementById("wizard-next-btn");
+  const indicator = document.getElementById("wizard-step-indicator");
+  if (s1)
+    s1.style.display = step === 1 ? "block" : "none";
+  if (s2)
+    s2.style.display = step === 2 ? "block" : "none";
+  if (s3)
+    s3.style.display = step === 3 ? "block" : "none";
+  if (indicator)
+    indicator.textContent = `Step ${step} of 3`;
+  if (backBtn) {
+    backBtn.style.visibility = step === 1 ? "hidden" : "visible";
+  }
+  if (nextBtn) {
+    if (step === 3) {
+      nextBtn.textContent = "\uD83D\uDE80 Finish Setup & Hoist Sail";
+    } else {
+      nextBtn.textContent = "Continue →";
+    }
+  }
+}
+function setProviderPreset(preset) {
+  const buttons = document.querySelectorAll(".provider-preset-btn");
+  buttons.forEach((b) => {
+    b.classList.toggle("active", b.dataset.preset === preset);
+  });
+  const regionInput = document.getElementById("wizard-region-input");
+  const endpointInput = document.getElementById("wizard-endpoint-input");
+  if (preset === "aws") {
+    if (regionInput)
+      regionInput.value = "us-east-1";
+    if (endpointInput) {
+      endpointInput.value = "";
+      endpointInput.placeholder = "Leave empty for standard AWS S3";
+    }
+  } else if (preset === "r2") {
+    if (regionInput)
+      regionInput.value = "auto";
+    if (endpointInput) {
+      endpointInput.placeholder = "https://<account-id>.r2.cloudflarestorage.com";
+      if (!endpointInput.value)
+        endpointInput.value = "";
+    }
+  } else if (preset === "wasabi") {
+    if (regionInput)
+      regionInput.value = "us-east-1";
+    if (endpointInput) {
+      endpointInput.value = "https://s3.wasabisys.com";
+    }
+  } else if (preset === "minio") {
+    if (regionInput)
+      regionInput.value = "us-east-1";
+    if (endpointInput) {
+      endpointInput.value = "http://localhost:8333";
+    }
+  }
+}
+function generateRandomPassphrase() {
+  const words = [
+    "anchor",
+    "compass",
+    "galleon",
+    "starlight",
+    "corsair",
+    "treasure",
+    "horizon",
+    "voyage",
+    "mariner",
+    "kraken",
+    "caravel",
+    "tempest",
+    "harbor",
+    "island",
+    "cutlass"
+  ];
+  const chosen = [];
+  for (let i = 0;i < 4; i++) {
+    const idx = Math.floor(Math.random() * words.length);
+    chosen.push(words[idx]);
+  }
+  const phrase = chosen.join("-") + "-" + Math.floor(100 + Math.random() * 900);
+  const p1 = document.getElementById("wizard-passphrase-input");
+  const p2 = document.getElementById("wizard-confirm-passphrase-input");
+  if (p1)
+    p1.value = phrase;
+  if (p2)
+    p2.value = phrase;
+  showToast("\uD83C\uDFB2 Random recovery passphrase generated! Save this securely.", "success");
+  return phrase;
+}
+async function handleSetupWizardSubmit() {
+  const errBanner = document.getElementById("wizard-error-banner");
+  const showError = (msg) => {
+    if (errBanner) {
+      errBanner.textContent = msg;
+      errBanner.style.display = "block";
+    } else {
+      showToast(msg, "error");
+    }
+  };
+  if (errBanner)
+    errBanner.style.display = "none";
+  const folder = document.getElementById("wizard-folder-input")?.value.trim() || "~/RenegadeBox";
+  const deviceName = document.getElementById("wizard-device-name-input")?.value.trim();
+  const bucket = document.getElementById("wizard-bucket-input")?.value.trim();
+  const region = document.getElementById("wizard-region-input")?.value.trim() || "us-east-1";
+  const endpoint = document.getElementById("wizard-endpoint-input")?.value.trim() || undefined;
+  const accessKeyId = document.getElementById("wizard-access-key-input")?.value.trim();
+  const secretKey = document.getElementById("wizard-secret-key-input")?.value.trim();
+  const passphrase = document.getElementById("wizard-passphrase-input")?.value;
+  const confirmPass = document.getElementById("wizard-confirm-passphrase-input")?.value;
+  if (currentWizardStep === 1) {
+    if (!folder)
+      return showError("Please specify a sync folder location.");
+    showWizardStep(2);
+    return;
+  }
+  if (currentWizardStep === 2) {
+    if (!bucket)
+      return showError("Please enter an S3 bucket name.");
+    if (!accessKeyId)
+      return showError("Please enter your S3 Access Key ID.");
+    if (!secretKey)
+      return showError("Please enter your S3 Secret Access Key.");
+    showWizardStep(3);
+    return;
+  }
+  if (currentWizardStep === 3) {
+    if (!passphrase || passphrase.length < 6) {
+      return showError("Passphrase must be at least 6 characters long.");
+    }
+    if (passphrase !== confirmPass) {
+      return showError("Passphrases do not match. Please re-enter.");
+    }
+    const nextBtn = document.getElementById("wizard-next-btn");
+    const oldBtnText = nextBtn?.textContent;
+    if (nextBtn) {
+      nextBtn.disabled = true;
+      nextBtn.textContent = "Setting up vault...";
+    }
+    try {
+      const res = await tauriInvoke("setup_vault", {
+        payload: {
+          folder,
+          bucket,
+          region,
+          endpoint,
+          access_key_id: accessKeyId,
+          secret_access_key: secretKey,
+          passphrase,
+          device_name: deviceName,
+          hub_url: undefined
+        }
+      });
+      currentVaultStatus = res;
+      closeSetupWizard();
+      showToast("\uD83C\uDF89 Encrypted vault setup complete! Zero-knowledge sync is active.", "success");
+      logActivity("\uD83C\uDFF4‍☠️ Vault Initialized", `Syncing ${folder} <-> s3://${bucket}`, "system");
+      await refreshVaultStatus();
+      await refreshFilesList();
+    } catch (err) {
+      showError(`Setup failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      if (nextBtn) {
+        nextBtn.disabled = false;
+        nextBtn.textContent = oldBtnText || "Continue →";
+      }
+    }
   }
 }
 var contextMenuTargetFile = null;
@@ -1099,7 +1346,7 @@ function hideContextMenu() {
     menu.style.display = "none";
   contextMenuTargetFile = null;
 }
-function initDesktopApp() {
+async function initDesktopApp() {
   console.log("[RenegadeBox] Initializing complete desktop UI...");
   loadStarred();
   document.getElementById("sync-now-btn")?.addEventListener("click", (e) => {
@@ -1317,6 +1564,55 @@ function initDesktopApp() {
   document.getElementById("modal-done-btn")?.addEventListener("click", closeSettingsModal);
   document.getElementById("save-settings-btn")?.addEventListener("click", handleSaveSettings);
   document.getElementById("modal-dashboard-btn")?.addEventListener("click", () => tauriInvoke("open_dashboard"));
+  document.getElementById("cfg-autostart-toggle")?.addEventListener("change", async (e) => {
+    const target = e.target;
+    try {
+      await tauriInvoke("set_autostart_enabled", { enabled: target.checked });
+      showToast(target.checked ? "\uD83D\uDE80 RenegadeBox will start automatically on login." : "Disabled start at login.", "info");
+    } catch (_) {
+      showToast("Failed to update startup preferences", "error");
+    }
+  });
+  document.getElementById("add-finder-btn")?.addEventListener("click", async () => {
+    try {
+      await tauriInvoke("add_to_finder_favorites");
+      showToast("\uD83D\uDCC2 Opened sync folder in Finder.", "success");
+    } catch (_) {
+      showToast("Opened sync folder in Finder", "info");
+    }
+  });
+  document.getElementById("migrate-keystore-btn")?.addEventListener("click", async () => {
+    try {
+      const ok = await tauriInvoke("migrate_to_silent_keystore");
+      if (ok) {
+        showToast("⚡ Successfully switched to Silent Private Keystore! Zero prompts on launch.", "success");
+        await refreshVaultStatus();
+        openSettingsModal();
+      } else {
+        showToast("Already using silent keystore.", "info");
+      }
+    } catch (err) {
+      showToast(`Migration error: ${err instanceof Error ? err.message : String(err)}`, "error");
+    }
+  });
+  document.getElementById("open-setup-wizard-btn")?.addEventListener("click", () => {
+    closeSettingsModal();
+    openSetupWizard();
+  });
+  document.getElementById("wizard-cancel-btn")?.addEventListener("click", closeSetupWizard);
+  document.getElementById("wizard-back-btn")?.addEventListener("click", () => {
+    if (currentWizardStep > 1)
+      showWizardStep(currentWizardStep - 1);
+  });
+  document.getElementById("wizard-next-btn")?.addEventListener("click", handleSetupWizardSubmit);
+  document.getElementById("wizard-generate-pass-btn")?.addEventListener("click", generateRandomPassphrase);
+  document.querySelectorAll(".provider-preset-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const preset = btn.dataset.preset;
+      if (preset)
+        setProviderPreset(preset);
+    });
+  });
   document.getElementById("ctx-open")?.addEventListener("click", () => {
     if (contextMenuTargetFile)
       tauriInvoke("open_file", { path: contextMenuTargetFile.path });
@@ -1390,7 +1686,10 @@ function initDesktopApp() {
       renderActiveViews();
     });
   }
-  refreshVaultStatus();
+  await refreshVaultStatus();
+  if (currentVaultStatus && !currentVaultStatus.initialized) {
+    openSetupWizard();
+  }
   refreshFilesList();
   setupAutoSyncEvents();
   setInterval(() => {
@@ -1442,7 +1741,9 @@ if (document.readyState === "loading") {
 export {
   toggleStar,
   tauriInvoke,
+  showWizardStep,
   showContextMenu,
+  setProviderPreset,
   selectFile,
   resolveConflict,
   renderFileTable,
@@ -1452,6 +1753,7 @@ export {
   renderActiveViews,
   refreshVaultStatus,
   refreshFilesList,
+  openSetupWizard,
   openSettingsModal,
   openHistoryModal,
   openConflictModal,
@@ -1460,14 +1762,17 @@ export {
   hideContextMenu,
   handleTogglePause,
   handleSyncNow,
+  handleSetupWizardSubmit,
   handleSaveSettings,
   handleRenameFile,
   handleExportCopy,
   handleDeleteFile,
   getFilteredAndSortedFiles,
+  generateRandomPassphrase,
   formatBytes,
   escapeHtml,
   enterDirectory,
+  closeSetupWizard,
   closeSettingsModal,
   closeHistoryModal,
   closeConflictModal

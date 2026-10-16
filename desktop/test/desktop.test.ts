@@ -288,6 +288,86 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(mainTs).toContain("showContextMenu");
     expect(mainTs).toContain("toggleStar");
   });
+
+  it("has in-app first-run setup wizard with provider presets and zero-knowledge passphrase generation", () => {
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const html = readFileSync(htmlPath, "utf-8");
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    // HTML Wizard structure
+    expect(html).toContain('id="setup-wizard-modal"');
+    expect(html).toContain('id="wizard-folder-input"');
+    expect(html).toContain('id="wizard-bucket-input"');
+    expect(html).toContain('id="wizard-access-key-input"');
+    expect(html).toContain('id="wizard-secret-key-input"');
+    expect(html).toContain('id="wizard-passphrase-input"');
+    expect(html).toContain('id="preset-aws-btn"');
+    expect(html).toContain('id="preset-r2-btn"');
+    expect(html).toContain('id="preset-wasabi-btn"');
+    expect(html).toContain('id="preset-minio-btn"');
+    expect(html).toContain('id="wizard-generate-pass-btn"');
+
+    // Rust backend command
+    expect(commands).toContain("pub async fn setup_vault");
+    expect(commands).toContain("struct SetupVaultPayload");
+    expect(lib).toContain("commands::setup_vault");
+
+    // TypeScript controller
+    expect(mainTs).toContain("openSetupWizard");
+    expect(mainTs).toContain("closeSetupWizard");
+    expect(mainTs).toContain("setProviderPreset");
+    expect(mainTs).toContain("generateRandomPassphrase");
+    expect(mainTs).toContain("handleSetupWizardSubmit");
+  });
+
+  it("has start at login (LaunchAgent autostart) integration", () => {
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const html = readFileSync(htmlPath, "utf-8");
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(html).toContain('id="cfg-autostart-toggle"');
+    expect(commands).toContain("pub fn is_autostart_enabled");
+    expect(commands).toContain("pub fn set_autostart_enabled");
+    expect(commands).toContain("com.renegadebox.desktop.plist");
+    expect(lib).toContain("commands::is_autostart_enabled");
+    expect(lib).toContain("commands::set_autostart_enabled");
+    expect(mainTs).toContain("is_autostart_enabled");
+    expect(mainTs).toContain("set_autostart_enabled");
+  });
+
+  it("has silent zero-prompt keystore migration and Finder favorites integration", () => {
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const html = readFileSync(htmlPath, "utf-8");
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(html).toContain('id="migrate-keystore-btn"');
+    expect(html).toContain('id="add-finder-btn"');
+    expect(commands).toContain("pub fn migrate_keychain_to_silent_keystore");
+    expect(commands).toContain("pub fn migrate_to_silent_keystore");
+    expect(commands).toContain("pub fn add_to_finder_favorites");
+    expect(lib).toContain("commands::migrate_to_silent_keystore");
+    expect(lib).toContain("commands::add_to_finder_favorites");
+    expect(mainTs).toContain("migrate_to_silent_keystore");
+    expect(mainTs).toContain("add_to_finder_favorites");
+  });
 });
 
 

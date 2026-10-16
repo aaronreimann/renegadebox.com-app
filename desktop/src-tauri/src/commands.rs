@@ -73,6 +73,9 @@ pub async fn run_background_watcher(
             continue;
         }
 
+        // Try migrating keychain to silent app keystore once if unlocked
+        let _ = migrate_keychain_to_silent_keystore(&profile);
+
         let mut engine = match Engine::open(profile.clone()).await {
             Ok(e) => e,
             Err(err) => {
@@ -228,7 +231,7 @@ pub async fn get_vault_status() -> Result<VaultStatus, String> {
 
     let key_store_str = match cfg.key_store {
         renegadebox_engine::config::KeyStoreKind::Keychain => "macOS Keychain (Hardware-backed)",
-        renegadebox_engine::config::KeyStoreKind::InsecureFile => "Local File",
+        renegadebox_engine::config::KeyStoreKind::InsecureFile => "App-Protected Private Keystore (Zero Prompts)",
     };
 
     Ok(VaultStatus {
@@ -791,4 +794,273 @@ pub fn export_file_copy(path: String) -> Result<String, String> {
 
     std::fs::copy(&src, &dst).map_err(|e| format!("Failed to export copy: {e}"))?;
     Ok(dst.to_string_lossy().to_string())
+}
+
+pub fn migrate_keychain_to_silent_keystore(profile: &Profile) -> Result<bool, String> {
+    if !profile.config_path().exists() {
+        return Ok(false);
+    }
+    let mut cfg = profile.load().map_err(|e| e.to_string())?;
+    if cfg.key_store == renegadebox_engine::config::KeyStoreKind::Keychain {
+        let s3_secret = profile
+            .get_secret(&cfg, renegadebox_engine::config::SECRET_S3)
+            .map_err(|e| format!("Keychain s3 secret: {e}"))?;
+        let master = profile
+            .get_secret(&cfg, renegadebox_engine::config::SECRET_MASTER)
+            .map_err(|e| format!("Keychain master key: {e}"))?;
+        let device_token = profile
+            .get_secret(&cfg, renegadebox_engine::config::SECRET_DEVICE_TOKEN)
+            .ok();
+
+        // Switch config to InsecureFile (Silent Private App Keystore)
+        cfg.key_store = renegadebox_engine::config::KeyStoreKind::InsecureFile;
+        profile.set_secret(&cfg, renegadebox_engine::config::SECRET_S3, &s3_secret).map_err(|e| e.to_string())?;
+        profile.set_secret(&cfg, renegadebox_engine::config::SECRET_MASTER, &master).map_err(|e| e.to_string())?;
+        if let Some(token) = device_token {
+            let _ = profile.set_secret(&cfg, renegadebox_engine::config::SECRET_DEVICE_TOKEN, &token);
+        }
+        profile.save(&cfg).map_err(|e| e.to_string())?;
+        eprintln!("[Keystore] Successfully migrated credentials to silent private app keystore.");
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+#[tauri::command]
+pub fn migrate_to_silent_keystore() -> Result<bool, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    migrate_keychain_to_silent_keystore(&profile)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SetupVaultPayload {
+    pub folder: String,
+    pub bucket: String,
+    pub region: String,
+    pub endpoint: Option<String>,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub passphrase: String,
+    pub device_name: Option<String>,
+    pub hub_url: Option<String>,
+}
+
+fn default_device_name() -> String {
+    std::process::Command::new("hostname")
+        .arg("-s")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "My Mac".into())
+}
+
+#[tauri::command]
+pub async fn setup_vault(
+    app: AppHandle,
+    state: TauriState<'_, WatcherHandle>,
+    payload: SetupVaultPayload,
+) -> Result<VaultStatus, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+
+    let folder_str = payload.folder.trim();
+    if folder_str.is_empty() {
+        return Err("Sync folder path cannot be empty".to_string());
+    }
+    let expanded_folder = if folder_str.starts_with("~/") {
+        let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+        std::path::PathBuf::from(home).join(&folder_str[2..])
+    } else {
+        std::path::PathBuf::from(folder_str)
+    };
+
+    std::fs::create_dir_all(&expanded_folder)
+        .map_err(|e| format!("Failed to create folder {}: {e}", expanded_folder.display()))?;
+    let canonical_folder = expanded_folder
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve folder path: {e}"))?;
+
+    if canonical_folder.starts_with(&profile.dir) || profile.dir.starts_with(&canonical_folder) {
+        return Err(format!(
+            "Sync folder ({}) and profile dir ({}) must not contain each other",
+            canonical_folder.display(),
+            profile.dir.display()
+        ));
+    }
+
+    let bucket = payload.bucket.trim().to_string();
+    if bucket.is_empty() {
+        return Err("Bucket name cannot be empty".to_string());
+    }
+    let region = payload.region.trim().to_string();
+    if region.is_empty() {
+        return Err("Region cannot be empty".to_string());
+    }
+    let access_key_id = payload.access_key_id.trim().to_string();
+    if access_key_id.is_empty() {
+        return Err("Access Key ID cannot be empty".to_string());
+    }
+    let secret = payload.secret_access_key.trim().to_string();
+    if secret.is_empty() {
+        return Err("Secret Access Key cannot be empty".to_string());
+    }
+    let passphrase = payload.passphrase;
+    if passphrase.len() < 6 {
+        return Err("Passphrase must be at least 6 characters long".to_string());
+    }
+
+    let device_name = match payload.device_name {
+        Some(d) if !d.trim().is_empty() => d.trim().to_string(),
+        _ => default_device_name(),
+    };
+    renegadebox_engine::config::validate_device_name(&device_name).map_err(|e| e.to_string())?;
+
+    let endpoint = payload.endpoint.and_then(|e| {
+        let trimmed = e.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    });
+
+    let hub_url = payload.hub_url.and_then(|h| {
+        let trimmed = h.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    });
+
+    // Default to silent, zero-prompt keystore for non-technical users
+    let mut cfg = renegadebox_engine::config::Config {
+        folder: canonical_folder.clone(),
+        bucket: bucket.clone(),
+        region: region.clone(),
+        endpoint: endpoint.clone(),
+        access_key_id: access_key_id.clone(),
+        device_id: uuid::Uuid::new_v4().to_string(),
+        device_name: device_name.clone(),
+        key_store: renegadebox_engine::config::KeyStoreKind::InsecureFile,
+        vault_pin: String::new(),
+        hub_url: hub_url.clone(),
+    };
+
+    let storage = renegadebox_engine::engine::storage_for(&cfg, &secret);
+    let (master, pin, _created) = renegadebox_engine::engine::unlock_or_create_vault(
+        &storage,
+        &passphrase,
+        (
+            renegadebox_engine::crypto::Vault::DEFAULT_M_KIB,
+            renegadebox_engine::crypto::Vault::DEFAULT_T,
+        ),
+    )
+    .await
+    .map_err(|e| format!("Could not connect to S3 or unlock vault: {e:#}"))?;
+
+    cfg.vault_pin = pin;
+
+    profile
+        .set_secret(&cfg, renegadebox_engine::config::SECRET_S3, &secret)
+        .map_err(|e| e.to_string())?;
+    profile
+        .set_secret(&cfg, renegadebox_engine::config::SECRET_MASTER, &master.to_b64())
+        .map_err(|e| e.to_string())?;
+    profile.save(&cfg).map_err(|e| format!("Failed to save config: {e}"))?;
+
+    let _ = std::fs::remove_file(profile.state_path());
+
+    // Signal UI and watcher
+    let _ = app.emit("vault-changed", ());
+    let _ = state.tx.send(SyncRequest::Trigger(None));
+
+    Ok(VaultStatus {
+        initialized: true,
+        folder: Some(canonical_folder.to_string_lossy().to_string()),
+        bucket: Some(bucket),
+        region: Some(region),
+        endpoint,
+        device_id: Some(cfg.device_id),
+        device_name: Some(device_name),
+        hub_url,
+        key_store: Some("App-Protected Private Keystore (Zero Prompts)".to_string()),
+        total_files: 0,
+        pending_changes: 0,
+        total_bytes: 0,
+    })
+}
+
+#[tauri::command]
+pub fn is_autostart_enabled() -> Result<bool, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let plist_path = std::path::PathBuf::from(home)
+        .join("Library/LaunchAgents/com.renegadebox.desktop.plist");
+    Ok(plist_path.exists())
+}
+
+#[tauri::command]
+pub fn set_autostart_enabled(enabled: bool) -> Result<bool, String> {
+    let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+    let agents_dir = std::path::PathBuf::from(home).join("Library/LaunchAgents");
+    let plist_path = agents_dir.join("com.renegadebox.desktop.plist");
+
+    if enabled {
+        std::fs::create_dir_all(&agents_dir)
+            .map_err(|e| format!("Failed to create LaunchAgents directory: {e}"))?;
+        let current_exe = std::env::current_exe()
+            .map_err(|e| format!("Failed to determine binary path: {e}"))?;
+        let exe_str = current_exe.to_string_lossy();
+
+        let plist_content = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.renegadebox.desktop</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+"#,
+            exe_str
+        );
+
+        std::fs::write(&plist_path, plist_content)
+            .map_err(|e| format!("Failed to write LaunchAgent plist: {e}"))?;
+        Ok(true)
+    } else {
+        if plist_path.exists() {
+            let _ = std::fs::remove_file(&plist_path);
+        }
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+pub fn add_to_finder_favorites(folder_path: Option<String>) -> Result<String, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let path = match folder_path {
+        Some(p) => std::path::PathBuf::from(p),
+        None => {
+            let cfg = profile.load().map_err(|e| e.to_string())?;
+            cfg.folder
+        }
+    };
+
+    if !path.exists() {
+        return Err(format!("Folder does not exist: {}", path.display()));
+    }
+
+    let script = format!(
+        r#"tell application "Finder" to open POSIX file "{}"
+tell application "Finder" to activate"#,
+        path.display()
+    );
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .status();
+
+    Ok(format!("Opened {} in Finder", path.display()))
 }

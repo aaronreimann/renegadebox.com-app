@@ -1234,7 +1234,26 @@ a,
 .quick-circle-btn,
 .filter-chip,
 .breadcrumb-item,
-.context-menu-item {
+.context-menu-item,
+.provider-preset-btn {
   -webkit-app-region: no-drag !important;
   pointer-events: auto !important;
+}
+
+/* Provider Preset Buttons in Wizard */
+.provider-preset-btn {
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.provider-preset-btn:hover {
+  border-color: var(--dbx-blue) !important;
+  color: var(--dbx-blue) !important;
+}
+
+.provider-preset-btn.active {
+  background: #eff6ff !important;
+  border-color: var(--dbx-blue) !important;
+  color: var(--dbx-blue) !important;
+  box-shadow: 0 0 0 2px rgba(0, 97, 254, 0.15) !important;
 }
