@@ -784,13 +784,13 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
 .brand-header {
   display: flex;
   align-items: center;
-  padding: 2px 4px 4px;
+  padding: 4px 6px 8px;
 }
 
 .brand-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
 }
 
@@ -798,8 +798,8 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   background: var(--accent);
   color: var(--accent-text);
@@ -807,20 +807,12 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   box-shadow: 0 2px 6px rgba(47, 107, 219, 0.22);
 }
 
-.brand-details {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-}
-
 .brand-title {
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--text);
-  line-height: 1.15;
+  line-height: 1;
 }
 
 .sidebar-status-pill {
@@ -982,12 +974,52 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.storage-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-muted);
+}
+
+.storage-status.status-ok {
+  color: var(--ok);
+}
+
+.storage-status.status-syncing {
+  color: var(--accent);
+}
+
+.storage-status.status-paused {
+  color: var(--warn);
+}
+
+.storage-status.status-attention,
+.storage-status.status-error {
+  color: var(--danger);
+}
+
+.storage-status .dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.storage-status.status-syncing .dot {
+  animation: sync-pulse 1.6s infinite ease-in-out;
+}
+
+.storage-status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .storage-provider-pill {
