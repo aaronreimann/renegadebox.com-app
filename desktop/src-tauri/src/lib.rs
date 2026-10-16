@@ -1,5 +1,11 @@
 pub mod commands;
 
+use tauri::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Listener, Manager,
+};
+
 pub fn run() {
     let (watcher_tx, watcher_rx) = tokio::sync::mpsc::unbounded_channel();
     let watcher_handle = commands::WatcherHandle { tx: watcher_tx };
@@ -7,11 +13,116 @@ pub fn run() {
     tauri::Builder::default()
         .manage(watcher_handle)
         .setup(|app| {
-            let handle = app.handle().clone();
+            let watcher_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                commands::run_background_watcher(handle, watcher_rx).await;
+                commands::run_background_watcher(watcher_app, watcher_rx).await;
             });
+
+            // Build macOS Menu Bar Tray Menu
+            let open_i = MenuItem::with_id(app, "open", "Open RenegadeBox", true, None::<&str>)?;
+            let folder_i = MenuItem::with_id(app, "folder", "Open Sync Folder", true, None::<&str>)?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+            let status_i = MenuItem::with_id(app, "status", "Status: Up to date", false, None::<&str>)?;
+            let sync_i = MenuItem::with_id(app, "sync", "Sync Now", true, None::<&str>)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let dashboard_i = MenuItem::with_id(app, "dashboard", "Web Dashboard...", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit RenegadeBox", true, None::<&str>)?;
+
+            let status_item = status_i.clone();
+            let status_item_start = status_i.clone();
+            app.listen("sync-started", move |_| {
+                let _ = status_item_start.set_text("Status: Syncing changes...");
+            });
+
+            app.listen("sync-finished", move |event| {
+                if let Ok(res) = serde_json::from_str::<commands::SyncResult>(event.payload()) {
+                    let msg = if res.failed > 0 {
+                        format!("Status: Sync warning ({} failed)", res.failed)
+                    } else if res.uploaded > 0 || res.downloaded > 0 {
+                        format!("Status: Synced (↑{} / ↓{})", res.uploaded, res.downloaded)
+                    } else {
+                        "Status: Up to date".to_string()
+                    };
+                    let _ = status_item.set_text(msg);
+                }
+            });
+
+
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &open_i,
+                    &folder_i,
+                    &sep1,
+                    &status_i,
+                    &sync_i,
+                    &sep2,
+                    &dashboard_i,
+                    &quit_i,
+                ],
+            )?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .tooltip("RenegadeBox - End-to-End Encrypted Sync")
+                .on_menu_event(|app, event| {
+                    match event.id.as_ref() {
+                        "open" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "folder" => {
+                            let _ = commands::open_sync_folder();
+                        }
+                        "sync" => {
+                            if let Some(handle) = app.try_state::<commands::WatcherHandle>() {
+                                let _ = handle.tx.send(commands::SyncRequest::Trigger(None));
+                            }
+                        }
+                        "dashboard" => {
+                            let _ = commands::open_dashboard();
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                });
+
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone()).icon_as_template(true);
+            }
+
+            tray_builder.build(app)?;
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_vault_status,
@@ -23,3 +134,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running renegadebox desktop application");
 }
+

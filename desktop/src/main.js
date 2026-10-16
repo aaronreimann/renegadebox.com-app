@@ -622,6 +622,15 @@ async function setupAutoSyncEvents() {
       await refreshVaultStatus();
       await refreshFilesList();
     });
+    await listen2("sync-started", () => {
+      console.log("[Tauri Event] sync-started received");
+      const activityTitle = document.getElementById("activity-title");
+      const activityTime = document.getElementById("activity-time");
+      if (activityTitle)
+        activityTitle.textContent = "Syncing in progress...";
+      if (activityTime)
+        activityTime.textContent = "Encrypting & synchronizing with S3 vault";
+    });
     await listen2("sync-finished", async (event) => {
       console.log("[Tauri Event] sync-finished received:", event.payload);
       const activityTitle = document.getElementById("activity-title");

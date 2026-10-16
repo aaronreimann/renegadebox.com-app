@@ -109,7 +109,27 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(lib).toContain("WatcherHandle");
     expect(lib).toContain("run_background_watcher");
     expect(mainTs).toContain("vault-changed");
+    expect(mainTs).toContain("sync-started");
     expect(mainTs).toContain("sync-finished");
   });
+
+  it("has macOS menu bar system tray icon with quick actions and window management", () => {
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const cargoPath = join(DESKTOP_DIR, "src-tauri/Cargo.toml");
+
+    const lib = readFileSync(libPath, "utf-8");
+    const cargo = readFileSync(cargoPath, "utf-8");
+
+    expect(cargo).toContain("tray-icon");
+    expect(lib).toContain("TrayIconBuilder");
+    expect(lib).toContain("Open RenegadeBox");
+    expect(lib).toContain("Open Sync Folder");
+    expect(lib).toContain("Status: Up to date");
+    expect(lib).toContain("Sync Now");
+    expect(lib).toContain("Quit RenegadeBox");
+    expect(lib).toContain("CloseRequested");
+    expect(lib).toContain("prevent_close");
+  });
 });
+
 

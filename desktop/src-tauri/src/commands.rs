@@ -120,6 +120,7 @@ pub async fn run_background_watcher(
                 }
             }
 
+            let _ = app.emit("sync-started", ());
             match engine.sync_once().await {
                 Ok(report) => {
                     let result = SyncResult {
