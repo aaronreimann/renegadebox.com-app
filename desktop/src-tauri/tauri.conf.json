@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.renegadebox.desktop",
   "build": {
+    "beforeDevCommand": "bun run build:frontend",
+    "beforeBuildCommand": "bun run build:frontend",
     "frontendDist": "../src"
   },
   "app": {

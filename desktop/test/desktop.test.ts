@@ -47,6 +47,24 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(cargo).toContain("tauri = ");
   });
 
+  it("has compiled frontend bundle and no-drag click responsiveness", () => {
+    const jsPath = join(DESKTOP_DIR, "src/main.js");
+    const htmlPath = join(DESKTOP_DIR, "src/index.html");
+    const cssPath = join(DESKTOP_DIR, "src/style.css");
+    const confPath = join(DESKTOP_DIR, "src-tauri/tauri.conf.json");
+
+    expect(existsSync(jsPath)).toBe(true);
+    const html = readFileSync(htmlPath, "utf-8");
+    expect(html).toContain('src="./main.js"');
+
+    const css = readFileSync(cssPath, "utf-8");
+    expect(css).toContain("-webkit-app-region: no-drag !important;");
+
+    const conf = JSON.parse(readFileSync(confPath, "utf-8"));
+    expect(conf.build.beforeDevCommand).toContain("bun run build:frontend");
+    expect(conf.build.beforeBuildCommand).toContain("bun run build:frontend");
+  });
+
   it("has generated multi-platform icon assets", () => {
     const icnsPath = join(DESKTOP_DIR, "src-tauri/icons/icon.icns");
     const pngPath = join(DESKTOP_DIR, "src-tauri/icons/32x32.png");

@@ -1,6 +1,7 @@
 // RenegadeBox Desktop Client Application Logic
+import { invoke } from "@tauri-apps/api/core";
 
-interface VaultStatus {
+export interface VaultStatus {
   initialized: boolean;
   folder: string | null;
   bucket: string | null;
@@ -15,14 +16,14 @@ interface VaultStatus {
   total_bytes: number;
 }
 
-interface FileItem {
+export interface FileItem {
   path: string;
   size: number;
   status: "synced" | "pending_upload" | "conflicted" | "deleted";
   mtime_ns: number;
 }
 
-interface SyncResult {
+export interface SyncResult {
   success: boolean;
   message: string;
   uploaded: number;
@@ -31,50 +32,53 @@ interface SyncResult {
   failed: number;
 }
 
-// Fallback or Tauri Invoke wrapper
 declare global {
   interface Window {
-    __TAURI__?: {
-      core: {
-        invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
-      };
-    };
+    __TAURI_INTERNALS__?: unknown;
+    __TAURI__?: unknown;
   }
 }
 
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (window.__TAURI__?.core) {
-    return window.__TAURI__.core.invoke<T>(cmd, args);
+export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const hasTauri = typeof window !== "undefined" && (
+    Boolean(window.__TAURI_INTERNALS__) ||
+    Boolean(window.__TAURI__)
+  );
+
+  if (hasTauri) {
+    try {
+      return await invoke<T>(cmd, args);
+    } catch (err) {
+      console.error(`[Tauri IPC Error: ${cmd}]`, err);
+      throw err;
+    }
   }
-  // Mock mode for browser preview / testing
+
+  // Fallback mock mode for browser preview / testing outside Tauri runtime
   console.log(`[IPC Mock] ${cmd}`, args);
   if (cmd === "get_vault_status") {
     return {
-      initialized: true,
-      folder: "/Users/me/RenegadeBox",
-      bucket: "my-box",
+      initialized: false,
+      folder: null,
+      bucket: null,
       region: "us-east-1",
-      endpoint: "http://localhost:8333",
-      device_id: "00c4a3c6-7bb6-4a3d-8349-025db24bcceb",
-      device_name: "Laptop",
-      hub_url: "ws://localhost:8787/ws",
-      key_store: "macOS Keychain (Hardware-backed)",
-      total_files: 14,
+      endpoint: null,
+      device_id: null,
+      device_name: null,
+      hub_url: null,
+      key_store: "macOS Keychain",
+      total_files: 0,
       pending_changes: 0,
-      total_bytes: 42180900,
+      total_bytes: 0,
     } as unknown as T;
   }
   if (cmd === "list_synced_files") {
-    return [
-      { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1000000 },
-      { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1000000 },
-      { path: "Photos/team-offsite.jpg", size: 5214000, status: "synced", mtime_ns: Date.now() * 1000000 },
-    ] as unknown as T;
+    return [] as unknown as T;
   }
   if (cmd === "trigger_sync") {
     return {
       success: true,
-      message: "pushed: 0 up, 0 del, 0 mv | pulled: 0 down, 0 del, 0 mv | conflicts: 0 | stale skipped: 0 | failed: 0",
+      message: "Sync completed (mock mode)",
       uploaded: 0,
       downloaded: 0,
       conflicts: 0,
@@ -86,7 +90,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 
 let allFiles: FileItem[] = [];
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
@@ -94,7 +98,7 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-function appendLog(text: string, color: string = "#94a3b8") {
+export function appendLog(text: string, color: string = "#94a3b8") {
   const logBox = document.getElementById("log-box");
   if (!logBox) return;
   const entry = document.createElement("div");
@@ -110,6 +114,7 @@ export async function refreshVaultStatus() {
   try {
     const status = await tauriInvoke<VaultStatus>("get_vault_status");
     
+    const uninitBanner = document.getElementById("uninit-banner");
     const statFiles = document.getElementById("stat-files");
     const statStorage = document.getElementById("stat-storage");
     const statPending = document.getElementById("stat-pending");
@@ -124,8 +129,15 @@ export async function refreshVaultStatus() {
     if (statKeystore && status.key_store) statKeystore.textContent = status.key_store;
     if (folderPath && status.folder) folderPath.textContent = status.folder;
 
+    if (uninitBanner) {
+      uninitBanner.style.display = status.initialized ? "none" : "flex";
+    }
+
     if (connPill && connText) {
-      if (status.pending_changes > 0) {
+      if (!status.initialized) {
+        connPill.className = "status-pill syncing";
+        connText.textContent = "Setup Needed";
+      } else if (status.pending_changes > 0) {
         connPill.className = "status-pill syncing";
         connText.textContent = `${status.pending_changes} Pending`;
       } else {
@@ -142,12 +154,12 @@ export async function refreshVaultStatus() {
     const cfgEndpoint = document.getElementById("cfg-endpoint");
     const cfgHub = document.getElementById("cfg-hub");
 
-    if (cfgDeviceId) cfgDeviceId.textContent = status.device_id || "Unregistered";
-    if (cfgDeviceName) cfgDeviceName.textContent = status.device_name || "Unknown";
+    if (cfgDeviceId) cfgDeviceId.textContent = status.device_id || "Unregistered (Run init to connect)";
+    if (cfgDeviceName) cfgDeviceName.textContent = status.device_name || "Unconfigured";
     if (cfgBucket) cfgBucket.textContent = status.bucket || "None";
     if (cfgRegion) cfgRegion.textContent = status.region || "us-east-1";
     if (cfgEndpoint) cfgEndpoint.textContent = status.endpoint || "None (AWS standard)";
-    if (cfgHub) cfgHub.textContent = status.hub_url || "Disconnected";
+    if (cfgHub) cfgHub.textContent = status.hub_url || "ws://localhost:8787/ws";
   } catch (err) {
     console.error("Failed to load status:", err);
   }
@@ -165,7 +177,7 @@ export async function refreshFilesList() {
   }
 }
 
-function renderFilesTable(files: FileItem[]) {
+export function renderFilesTable(files: FileItem[]) {
   const tbody = document.getElementById("files-tbody");
   if (!tbody) return;
 
@@ -221,6 +233,16 @@ function escapeHtml(str: string): string {
   }[m] || m));
 }
 
+export function switchTab(targetId: string) {
+  document.querySelectorAll(".tab-btn").forEach((b) => {
+    const isTarget = b.getAttribute("data-tab") === targetId;
+    b.classList.toggle("active", isTarget);
+  });
+  document.querySelectorAll(".content-view").forEach((view) => {
+    view.classList.toggle("active", view.id === targetId);
+  });
+}
+
 // User Actions
 export async function handleSyncNow() {
   const syncBtn = document.getElementById("sync-now-btn") as HTMLButtonElement | null;
@@ -258,29 +280,57 @@ export async function handleSyncNow() {
 }
 
 export function initDesktopApp() {
+  console.log("[RenegadeBox] Initializing desktop app DOM handlers...");
+
   // Navigation Tabs
   document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".content-view").forEach((view) => view.classList.remove("active"));
-
-      btn.classList.add("active");
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const targetId = btn.getAttribute("data-tab");
       if (targetId) {
-        document.getElementById(targetId)?.classList.add("active");
+        console.log(`[RenegadeBox] Switching tab to ${targetId}`);
+        switchTab(targetId);
       }
     });
   });
 
   // Action Buttons
-  document.getElementById("sync-now-btn")?.addEventListener("click", handleSyncNow);
-  document.getElementById("open-folder-btn")?.addEventListener("click", () => {
-    tauriInvoke("open_sync_folder");
+  document.getElementById("setup-s3-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    switchTab("tab-settings");
   });
-  document.getElementById("open-dashboard-btn")?.addEventListener("click", () => {
-    tauriInvoke("open_dashboard");
+
+  document.getElementById("sync-now-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    handleSyncNow();
   });
-  document.getElementById("refresh-files-btn")?.addEventListener("click", refreshFilesList);
+
+  document.getElementById("open-folder-btn")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    appendLog("Opening local sync folder in Finder...", "#38bdf8");
+    try {
+      await tauriInvoke("open_sync_folder");
+    } catch (err) {
+      appendLog(`Open folder error: ${err}`, "#f43f5e");
+    }
+  });
+
+  document.getElementById("open-dashboard-btn")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    appendLog("Opening Control Plane Dashboard in default browser...", "#38bdf8");
+    try {
+      await tauriInvoke("open_dashboard");
+    } catch (err) {
+      appendLog(`Open dashboard error: ${err}`, "#f43f5e");
+    }
+  });
+
+  document.getElementById("refresh-files-btn")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    appendLog("Refreshing tracked files cache...", "#38bdf8");
+    await refreshFilesList();
+  });
 
   // Search Filter
   const searchInput = document.getElementById("file-search-input") as HTMLInputElement | null;
@@ -298,6 +348,8 @@ export function initDesktopApp() {
   setInterval(() => {
     refreshVaultStatus();
   }, 3000);
+
+  appendLog("Desktop GUI active and interactive.", "#10b981");
 }
 
 if (document.readyState === "loading") {
