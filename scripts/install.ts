@@ -58,7 +58,7 @@ if (process.argv.includes("--desktop")) {
   mkdirSync(join(homedir(), "Applications"), { recursive: true });
   if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
   cpSync(join(bundleDir, app), dest, { recursive: true });
-  const sig = await $`codesign -dv ${dest}`.nothrow().quiet();
+  const sig = await $`codesign -dv --verbose=2 ${dest}`.nothrow().quiet();
   const authority = sig.stderr.toString().match(/Authority=(.*)/)?.[1] ?? "ad-hoc / unsigned";
   console.log(`✓ ${dest} (signed by: ${authority})`);
 }
