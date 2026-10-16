@@ -3,10 +3,245 @@ import Layout from "../layouts/Layout.astro";
 ---
 
 <Layout title="RenegadeBox — Zero-Knowledge S3 Folder Sync">
-  <div class="container" style="padding-top: 5rem; padding-bottom: 5rem; text-align: center;">
-    <h1 style="font-size: 3rem; margin-bottom: 1rem;">Own Your Cloud. Keep Your Files. Trust No One.</h1>
-    <p style="font-size: 1.25rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto;">
-      The open-source, end-to-end-encrypted Dropbox alternative syncing into your own S3 bucket.
-    </p>
-  </div>
+  <!-- Hero Section -->
+  <section style="padding: 5rem 0 4rem 0; position: relative;">
+    <div class="container" style="text-align: center;">
+      <!-- Pill Badge -->
+      <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.375rem 0.875rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); color: #7dd3fc; font-size: 0.8125rem; font-weight: 600; margin-bottom: 2rem; backdrop-filter: blur(8px);">
+        <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #38bdf8; box-shadow: 0 0 10px #38bdf8; display: inline-block;"></span>
+        Open-Source BYOS Dropbox Alternative
+      </div>
+
+      <!-- Main Headline -->
+      <h1 style="font-size: clamp(2.5rem, 5.5vw, 4.25rem); font-weight: 900; letter-spacing: -0.03em; max-width: 950px; margin: 0 auto 1.5rem auto; line-height: 1.1;">
+        Own Your Cloud.<br />
+        Keep Your Files.<br />
+        <span class="gradient-cyan">Trust No One.</span>
+      </h1>
+
+      <!-- Subtitle -->
+      <p style="font-size: clamp(1.05rem, 2vw, 1.25rem); color: var(--text-secondary); max-width: 720px; margin: 0 auto 2.5rem auto; line-height: 1.6;">
+        RenegadeBox syncs your folders directly into your own AWS S3, Cloudflare R2, or Backblaze B2 bucket. 
+        Every byte and file name is encrypted with AES-256-GCM before upload.
+        Zero SaaS markups. Zero plaintext leaks.
+      </p>
+
+      <!-- CTAs & Command Box -->
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 1.5rem; margin-bottom: 3.5rem;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem;">
+          <a href="#quickstart" class="btn btn-primary" style="padding: 0.875rem 2rem; font-size: 1rem;">
+            Install CLI Quickstart
+          </a>
+          <a href="#zero-knowledge" class="btn btn-secondary" style="padding: 0.875rem 2rem; font-size: 1rem;">
+            How Encryption Works
+          </a>
+        </div>
+
+        <!-- Terminal Command Box -->
+        <div style="display: flex; align-items: center; background: #0c1017; border: 1px solid var(--border-subtle); border-radius: 0.625rem; padding: 0.5rem 0.75rem 0.5rem 1.25rem; gap: 1rem; max-width: 520px; width: 100%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);">
+          <span style="color: var(--accent-cyan); font-family: var(--font-mono); font-size: 0.875rem;">$</span>
+          <code id="cli-cmd" style="font-size: 0.8125rem; color: #e2e8f0; flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            cargo install --path engine --root ~/.local
+          </code>
+          <button
+            type="button"
+            id="copy-cmd-btn"
+            style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 0.375rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;"
+            onclick="navigator.clipboard.writeText('cargo install --path engine --root ~/.local'); this.innerText = 'Copied!'; setTimeout(() => this.innerText = 'Copy', 2000);"
+          >
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <!-- Trust Metrics Strip -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; max-width: 1000px; margin: 0 auto;">
+        <div class="glass-card" style="padding: 1.25rem; text-align: center;">
+          <div style="font-size: 1.5rem; font-weight: 800; color: var(--accent-cyan); font-family: var(--font-heading); margin-bottom: 0.25rem;">
+            Zero-Knowledge
+          </div>
+          <div style="font-size: 0.8125rem; color: var(--text-muted);">AES-256-GCM + Argon2id</div>
+        </div>
+
+        <div class="glass-card" style="padding: 1.25rem; text-align: center;">
+          <div style="font-size: 1.5rem; font-weight: 800; color: var(--accent-emerald); font-family: var(--font-heading); margin-bottom: 0.25rem;">
+            &lt; 600 ms
+          </div>
+          <div style="font-size: 0.8125rem; color: var(--text-muted);">Real-Time WebSocket Push</div>
+        </div>
+
+        <div class="glass-card" style="padding: 1.25rem; text-align: center;">
+          <div style="font-size: 1.5rem; font-weight: 800; color: #a855f7; font-family: var(--font-heading); margin-bottom: 0.25rem;">
+            BYOS S3
+          </div>
+          <div style="font-size: 0.8125rem; color: var(--text-muted);">AWS, Cloudflare R2, B2</div>
+        </div>
+
+        <div class="glass-card" style="padding: 1.25rem; text-align: center;">
+          <div style="font-size: 1.5rem; font-weight: 800; color: #f43f5e; font-family: var(--font-heading); margin-bottom: 0.25rem;">
+            100% Native
+          </div>
+          <div style="font-size: 0.8125rem; color: var(--text-muted);">Rust Engine + OS Keyring</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Terminal Showcase -->
+  <section style="padding: 3rem 0 5rem 0;">
+    <div class="container">
+      <div style="max-width: 900px; margin: 0 auto; background: #090d16; border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 0.875rem; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); overflow: hidden;">
+        <!-- Terminal Header -->
+        <div style="background: #0f1422; border-bottom: 1px solid var(--border-subtle); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="width: 0.75rem; height: 0.75rem; border-radius: 9999px; background: #ef4444; display: inline-block;"></span>
+            <span style="width: 0.75rem; height: 0.75rem; border-radius: 9999px; background: #f59e0b; display: inline-block;"></span>
+            <span style="width: 0.75rem; height: 0.75rem; border-radius: 9999px; background: #10b981; display: inline-block;"></span>
+            <span style="margin-left: 0.5rem; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+              rbox watch — ~/RenegadeBox
+            </span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <button
+              id="simulate-sync-btn"
+              style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7dd3fc; border-radius: 0.375rem; padding: 0.25rem 0.625rem; font-size: 0.75rem; font-family: var(--font-mono); cursor: pointer;"
+              onclick="triggerTerminalSimulation()"
+            >
+              ▶ Simulate File Event
+            </button>
+          </div>
+        </div>
+
+        <!-- Terminal Content -->
+        <div id="terminal-screen" style="padding: 1.5rem; font-family: var(--font-mono); font-size: 0.8125rem; line-height: 1.7; color: #cbd5e1; min-height: 280px; overflow-x: auto;">
+          <p style="color: var(--text-muted);"># Initializing encrypted vault and connecting to real-time hub...</p>
+          <p><span style="color: var(--accent-cyan);">$</span> rbox watch</p>
+          <p style="color: #6ee7b7;">[2026-10-15T21:00:00Z INFO] watching /Users/me/RenegadeBox (real-time via Hub at ws://localhost:8787/ws, remote fallback poll every 15s)</p>
+          <p style="color: #6ee7b7;">[2026-10-15T21:00:01Z INFO] Authenticated with Hub (account: bdf038da-13bd-4f17-84d9-0bfb1646be65)</p>
+          <p style="color: var(--text-muted);">[2026-10-15T21:00:01Z INFO] Vault unlocked. Master key loaded from macOS Keychain.</p>
+          <div id="terminal-dynamic-lines"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Features Grid -->
+  <section id="features" style="padding: 5rem 0; border-top: 1px solid var(--border-subtle); background: rgba(13, 17, 26, 0.4);">
+    <div class="container">
+      <div style="text-align: center; max-width: 650px; margin: 0 auto 4rem auto;">
+        <h2 style="font-size: 2.25rem; margin-bottom: 0.75rem;">Engineered for Privacy & Performance</h2>
+        <p style="color: var(--text-secondary); font-size: 1rem;">
+          No shortcuts, no third-party cloud analytics, and no compromise on zero-knowledge encryption.
+        </p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.75rem;">
+        <!-- Feature 1 -->
+        <div class="glass-card" style="padding: 2rem;">
+          <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.5rem; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-cyan); font-size: 1.25rem; margin-bottom: 1.25rem;">
+            ☁️
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.75rem;">Bring Your Own Storage</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+            Plug in your S3 credentials for AWS, Cloudflare R2 ($0 egress), Backblaze B2, or MinIO. Pay pennies directly to the storage provider rather than $15–$25/month for SaaS tiers.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="glass-card" style="padding: 2rem;">
+          <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.5rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); display: flex; align-items: center; justify-content: center; color: var(--accent-emerald); font-size: 1.25rem; margin-bottom: 1.25rem;">
+            🔐
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.75rem;">Zero-Knowledge Cryptography</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+            File contents and directory structures are encrypted into AES-256-GCM 4MB chunks. The S3 bucket and relay hub only ever see opaque blob hashes and ciphertext.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="glass-card" style="padding: 2rem;">
+          <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.5rem; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.2); display: flex; align-items: center; justify-content: center; color: #c084fc; font-size: 1.25rem; margin-bottom: 1.25rem;">
+            ⚡
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.75rem;">Sub-Second WebSocket Relay</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+            When Device A updates a file, a lightweight notification bounces through the WebSocket Hub and Postgres LISTEN/NOTIFY. Connected devices download the update in under 600ms.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="glass-card" style="padding: 2rem;">
+          <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.5rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); display: flex; align-items: center; justify-content: center; color: #fbbf24; font-size: 1.25rem; margin-bottom: 1.25rem;">
+            📜
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.75rem;">Append-Only Journals</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+            Each device writes to its own append-only journal in S3 using conditional writes (<code style="font-size: 0.8rem; background: rgba(255,255,255,0.06); padding: 0.15rem 0.35rem; border-radius: 0.25rem;">If-None-Match</code>). No locking, no centralized manifest bottlenecks.
+          </p>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="glass-card" style="padding: 2rem;">
+          <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.5rem; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); display: flex; align-items: center; justify-content: center; color: #fb7185; font-size: 1.25rem; margin-bottom: 1.25rem;">
+            🔑
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.75rem;">OS Keychain Protected</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+            Your S3 secret keys and Argon2id master vault keys never touch plain text files. They are saved directly into macOS Keychain, Windows Credential Manager, or Linux Secret Service.
+          </p>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="glass-card" style="padding: 2rem;">
+          <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.5rem; background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.2); display: flex; align-items: center; justify-content: center; color: #38bdf8; font-size: 1.25rem; margin-bottom: 1.25rem;">
+            🛡️
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.75rem;">Automatic Conflict Preservation</h3>
+          <p style="color: var(--text-secondary); font-size: 0.9375rem; line-height: 1.6;">
+            If two devices edit the same file simultaneously while offline, Lamport clock ordering converges deterministically. Conflicted copies are preserved so zero user data is ever lost.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Terminal Script -->
+  <script is:inline>
+    function triggerTerminalSimulation() {
+      const container = document.getElementById("terminal-dynamic-lines");
+      const btn = document.getElementById("simulate-sync-btn");
+      if (!container || !btn) return;
+
+      btn.disabled = true;
+      btn.innerText = "Syncing...";
+      container.innerHTML = "";
+
+      const steps = [
+        { text: "[21:00:10 INFO] Local file change detected: Documents/financial-projections-2026.pdf (3.8 MB)", color: "#93c5fd", delay: 200 },
+        { text: "[21:00:10 DEBUG] Chunking file into 4MB AEAD blocks, deriving per-content HMAC key...", color: "#94a3b8", delay: 400 },
+        { text: "[21:00:11 INFO] Encrypted with AES-256-GCM. Uploading blob rb/blobs/b4/b498e820...", color: "#6ee7b7", delay: 700 },
+        { text: "[21:00:11 INFO] Sealed journal entry seq 00000000000000000008 written to S3 with If-None-Match", color: "#6ee7b7", delay: 950 },
+        { text: "[21:00:11 INFO] Notified WebSocket Hub: journal_appended (zero plaintext transmitted)", color: "#38bdf8", delay: 1100 },
+        { text: "[21:00:11 INFO] Hub broadcast sync_required -> Desktop MacBook (Latency: 542ms)", color: "#a855f7", delay: 1350 },
+        { text: "[21:00:11 SUCCESS] Both devices converged. Zero plaintext leaked to S3 or Hub.", color: "#34d399", delay: 1600 }
+      ];
+
+      steps.forEach((step) => {
+        setTimeout(() => {
+          const p = document.createElement("p");
+          p.style.color = step.color;
+          p.innerText = step.text;
+          container.appendChild(p);
+          const screen = document.getElementById("terminal-screen");
+          if (screen) screen.scrollTop = screen.scrollHeight;
+        }, step.delay);
+      });
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerText = "▶ Simulate Again";
+      }, 1800);
+    }
+  </script>
 </Layout>
