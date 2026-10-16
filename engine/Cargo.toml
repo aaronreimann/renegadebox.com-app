@@ -3,6 +3,7 @@ name = "renegadebox-engine"
 version = "0.1.0"
 edition = "2024"
 description = "RenegadeBox sync engine: end-to-end-encrypted folder sync into your own S3 bucket"
+license = "MIT"
 
 [[bin]]
 name = "rbox"

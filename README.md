@@ -16,14 +16,13 @@ How it works and why: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Living spec 
 
 ## Quickstart (local)
 
-Requires Rust (`brew install rustup && rustup default stable`), Bun and Docker.
+Requires Rust (`brew install rustup && rustup default stable`, then put `$(brew --prefix rustup)/bin` on your PATH), Bun and Docker.
 
 ```bash
 docker compose up -d s3
 echo "s3.bucket.create -name my-box" | docker compose exec -T s3 weed shell
 
-cd engine && cargo build --release
-export PATH="$PWD/target/release:$PATH"
+cargo install --path engine --root ~/.local   # installs rbox to ~/.local/bin (must be on your PATH)
 
 # Device 1 (creates the encrypted vault; you choose the passphrase)
 rbox init --folder ~/RenegadeBox --bucket my-box --endpoint http://localhost:8333 \
@@ -56,3 +55,7 @@ cd engine && cargo test && RBOX_TEST_S3=1 cargo test --test s3
 bun scripts/e2e.ts
 cd protocol && bun test
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
