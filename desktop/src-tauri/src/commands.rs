@@ -76,8 +76,12 @@ pub async fn run_background_watcher(
         let mut engine = match Engine::open(profile.clone()).await {
             Ok(e) => e,
             Err(err) => {
-                eprintln!("[Watcher] Failed to open engine: {err:#}");
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                eprintln!("[Watcher] Engine authorization or initialization deferred: {err:#}");
+                // Back off significantly and wait for explicit trigger instead of spamming Keychain popups
+                tokio::select! {
+                    _ = tokio::time::sleep(tokio::time::Duration::from_secs(60)) => {}
+                    Some(_) = rx.recv() => {}
+                }
                 continue;
             }
         };
@@ -685,32 +689,6 @@ pub async fn get_file_history(path: String) -> Result<Vec<FileRevision>, String>
                     action: "Current Head".to_string(),
                     is_current: true,
                 });
-            }
-        }
-    }
-
-    // Try reading S3 journal entries to reconstruct full history if S3 accessible
-    if let Ok(cfg) = profile.load() {
-        if let Ok(secret) = profile.get_secret(&cfg, renegadebox_engine::config::SECRET_S3) {
-            let storage = renegadebox_engine::engine::storage_for(&cfg, &secret);
-            if let Ok(keys) = storage.list_keys("rb/journal/", None).await {
-                for k in keys.iter().rev().take(15) {
-                    if let Some((device, seq)) = renegadebox_engine::journal::parse_journal_key(k) {
-                        if revisions.iter().all(|r| r.lamport != seq) {
-                            revisions.push(FileRevision {
-                                timestamp_ms: (seq as i64) * 1000,
-                                date_str: format!("Journal Seq #{seq}"),
-                                device_name: format!("Device {}", &device[..8]),
-                                lamport: seq,
-                                size: 0,
-                                hash: format!("journal/{seq:06}"),
-                                blob_id: None,
-                                action: "Journal Commit".to_string(),
-                                is_current: false,
-                            });
-                        }
-                    }
-                }
             }
         }
     }
