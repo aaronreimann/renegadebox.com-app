@@ -47,7 +47,6 @@ import Layout from "../layouts/Layout.astro";
             type="button"
             id="copy-cmd-btn"
             style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--text-primary); border-radius: 0.375rem; padding: 0.375rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;"
-            onclick="navigator.clipboard.writeText('cargo install --path engine --root ~/.local'); this.innerText = 'Copied!'; setTimeout(() => this.innerText = 'Copy', 2000);"
           >
             Copy
           </button>
@@ -106,7 +105,6 @@ import Layout from "../layouts/Layout.astro";
             <button
               id="simulate-sync-btn"
               style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7dd3fc; border-radius: 0.375rem; padding: 0.25rem 0.625rem; font-size: 0.75rem; font-family: var(--font-mono); cursor: pointer;"
-              onclick="triggerTerminalSimulation()"
             >
               ▶ Simulate File Event
             </button>
@@ -206,42 +204,114 @@ import Layout from "../layouts/Layout.astro";
     </div>
   </section>
 
-  <!-- Interactive Terminal Script -->
-  <script is:inline>
-    function triggerTerminalSimulation() {
-      const container = document.getElementById("terminal-dynamic-lines");
-      const btn = document.getElementById("simulate-sync-btn");
-      if (!container || !btn) return;
+  <!-- Zero-Knowledge Cryptography Architecture Explorer -->
+  <section id="zero-knowledge" style="padding: 6rem 0; border-top: 1px solid var(--border-subtle); position: relative;">
+    <div class="container">
+      <div style="text-align: center; max-width: 720px; margin: 0 auto 4rem auto;">
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--border-emerald); color: #6ee7b7; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+          Verified by Automated Leak Probes (ISC-29 &amp; ISC-100)
+        </div>
+        <h2 style="font-size: 2.25rem; margin-bottom: 0.75rem;">What S3 and the Hub Never See</h2>
+        <p style="color: var(--text-secondary); font-size: 1rem;">
+          Commercial cloud providers scan and index your files. RenegadeBox isolates plaintext strictly to your physical hardware.
+        </p>
+      </div>
 
-      btn.disabled = true;
-      btn.innerText = "Syncing...";
-      container.innerHTML = "";
+      <!-- 3-Zone Architecture Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 3.5rem;">
+        <!-- Zone 1: Your Device -->
+        <div class="glass-card" style="padding: 1.75rem; border-top: 3px solid var(--accent-emerald);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+            <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6ee7b7;">Zone 1</span>
+            <span style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;">Plaintext Only</span>
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Your Local Machine</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.25rem; line-height: 1.6;">
+            Where your real files reside. The Rust engine decrypts files locally for editing and encrypts new versions before they leave memory.
+          </p>
+          <div style="background: #090e17; border: 1px solid var(--border-subtle); border-radius: 0.5rem; padding: 0.875rem; font-family: var(--font-mono); font-size: 0.75rem; color: #94a3b8;">
+            <div style="color: #6ee7b7; margin-bottom: 0.25rem;">✓ ~/RenegadeBox/taxes.pdf</div>
+            <div style="color: #6ee7b7; margin-bottom: 0.25rem;">✓ OS Keychain (Master Key)</div>
+            <div style="color: #6ee7b7;">✓ Local SQLite Cache (state.db)</div>
+          </div>
+        </div>
 
-      const steps = [
-        { text: "[21:00:10 INFO] Local file change detected: Documents/financial-projections-2026.pdf (3.8 MB)", color: "#93c5fd", delay: 200 },
-        { text: "[21:00:10 DEBUG] Chunking file into 4MB AEAD blocks, deriving per-content HMAC key...", color: "#94a3b8", delay: 400 },
-        { text: "[21:00:11 INFO] Encrypted with AES-256-GCM. Uploading blob rb/blobs/b4/b498e820...", color: "#6ee7b7", delay: 700 },
-        { text: "[21:00:11 INFO] Sealed journal entry seq 00000000000000000008 written to S3 with If-None-Match", color: "#6ee7b7", delay: 950 },
-        { text: "[21:00:11 INFO] Notified WebSocket Hub: journal_appended (zero plaintext transmitted)", color: "#38bdf8", delay: 1100 },
-        { text: "[21:00:11 INFO] Hub broadcast sync_required -> Desktop MacBook (Latency: 542ms)", color: "#a855f7", delay: 1350 },
-        { text: "[21:00:11 SUCCESS] Both devices converged. Zero plaintext leaked to S3 or Hub.", color: "#34d399", delay: 1600 }
-      ];
+        <!-- Zone 2: The S3 Bucket -->
+        <div class="glass-card" style="padding: 1.75rem; border-top: 3px solid var(--accent-cyan);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+            <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #7dd3fc;">Zone 2</span>
+            <span style="background: rgba(56, 189, 248, 0.15); color: #7dd3fc; padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;">Opaque Blobs</span>
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">Your S3 Bucket</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.25rem; line-height: 1.6;">
+            AWS, Cloudflare R2, or Backblaze B2. Holds encrypted 4MB chunked blobs and append-only device journals. Zero file names or directory paths.
+          </p>
+          <div style="background: #090e17; border: 1px solid var(--border-subtle); border-radius: 0.5rem; padding: 0.875rem; font-family: var(--font-mono); font-size: 0.75rem; color: #94a3b8;">
+            <div style="color: #7dd3fc; margin-bottom: 0.25rem;">• rb/blobs/b4/b498e820...</div>
+            <div style="color: #7dd3fc; margin-bottom: 0.25rem;">• rb/journal/&lt;uuid&gt;/00000000000000000008</div>
+            <div style="color: #7dd3fc;">• rb/vault.json (Wrapped Master Key)</div>
+          </div>
+        </div>
 
-      steps.forEach((step) => {
-        setTimeout(() => {
-          const p = document.createElement("p");
-          p.style.color = step.color;
-          p.innerText = step.text;
-          container.appendChild(p);
-          const screen = document.getElementById("terminal-screen");
-          if (screen) screen.scrollTop = screen.scrollHeight;
-        }, step.delay);
-      });
+        <!-- Zone 3: The Control Plane -->
+        <div class="glass-card" style="padding: 1.75rem; border-top: 3px solid var(--accent-purple);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+            <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #d8b4fe;">Zone 3</span>
+            <span style="background: rgba(168, 85, 247, 0.15); color: #d8b4fe; padding: 0.2rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: 600;">Opaque Relay Only</span>
+          </div>
+          <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem;">The WebSocket Hub</h3>
+          <p style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.25rem; line-height: 1.6;">
+            A lightweight relay that fan-outs "sync_required" pings between your online machines. Never touches storage or receives encryption keys.
+          </p>
+          <div style="background: #090e17; border: 1px solid var(--border-subtle); border-radius: 0.5rem; padding: 0.875rem; font-family: var(--font-mono); font-size: 0.75rem; color: #94a3b8;">
+            <div style="color: #d8b4fe; margin-bottom: 0.25rem;">• &#123; origin_device: &quot;...&quot;, seq: 8 &#125;</div>
+            <div style="color: #d8b4fe; margin-bottom: 0.25rem;">• Postgres LISTEN/NOTIFY fanout</div>
+            <div style="color: #d8b4fe;">• 256-bit CSPRNG token validation</div>
+          </div>
+        </div>
+      </div>
 
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.innerText = "▶ Simulate Again";
-      }, 1800);
-    }
-  </script>
+      <!-- Interactive Perspective Switcher -->
+      <div class="glass-card" style="padding: 2.5rem; max-width: 900px; margin: 0 auto; background: #0a0e18;">
+        <h3 style="font-size: 1.35rem; margin-bottom: 0.5rem; text-align: center;">Interactive Payload Inspector</h3>
+        <p style="text-align: center; color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 1.75rem;">
+          Compare what is visible on your machine against what reaches the S3 bucket and the WebSocket Hub.
+        </p>
+
+        <!-- Tabs -->
+        <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+          <button
+            id="tab-client"
+            style="background: rgba(16, 185, 129, 0.2); border: 1px solid var(--border-emerald); color: #6ee7b7; padding: 0.5rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;"
+          >
+            1. Your Device (Plaintext)
+          </button>
+          <button
+            id="tab-s3"
+            style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 0.5rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;"
+          >
+            2. In S3 Bucket (Ciphertext)
+          </button>
+          <button
+            id="tab-hub"
+            style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: var(--text-secondary); padding: 0.5rem 1.25rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;"
+          >
+            3. On Hub Wire (Envelopes)
+          </button>
+        </div>
+
+        <!-- Perspective Output Box -->
+        <div id="perspective-box" style="background: #060910; border: 1px solid var(--border-subtle); border-radius: 0.625rem; padding: 1.25rem; font-family: var(--font-mono); font-size: 0.8125rem; min-height: 180px; overflow-x: auto;">
+          <div style="color: #6ee7b7; margin-bottom: 0.5rem;">// Plaintext file on your MacBook:</div>
+          <div style="color: #f8fafc; font-weight: 600;">Path: /Users/me/RenegadeBox/Documents/Taxes/2026-Receipts.pdf</div>
+          <div style="color: var(--text-muted); margin-top: 0.5rem;">File size: 3,421,800 bytes</div>
+          <div style="color: var(--text-muted);">Plaintext hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</div>
+          <div style="color: var(--accent-emerald); margin-top: 0.75rem;">Status: Decrypted in local memory. Never transmitted over network without encryption.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Scripts -->
+  <script src="../scripts/site.ts"></script>
 </Layout>
