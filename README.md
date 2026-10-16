@@ -12,6 +12,7 @@ How it works and why: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Living spec 
 | `protocol/` | WebSocket + journal JSON Schemas, TS types, shared fixtures | Phase 1 ✅ |
 | `hub/` | WebSocket relay (Bun + Postgres `LISTEN/NOTIFY`) | Phase 2 ✅ |
 | `dashboard/` | Astro SSR: accounts, devices, tokens | Phase 2 ✅ |
+| `site/` | Astro static marketing & documentation site (`renegadebox.com`) | Phase 4 ✅ |
 | `scripts/` | `e2e.ts` (S3 engine) & `e2e-hub.ts` (real-time push) | ✅ |
 
 ## Quickstart (local)
@@ -24,9 +25,10 @@ echo "s3.bucket.create -name my-box" | docker compose exec -T s3 weed shell
 
 cargo install --path engine --root ~/.local   # installs rbox to ~/.local/bin (must be on your PATH)
 
-# Start Hub & Dashboard (Control Plane)
+# Start Hub & Dashboard (Control Plane) & Marketing/Docs Site
 (cd hub && bun run src/index.ts) &           # ws://localhost:8787
 (cd dashboard && bun run dev) &              # http://localhost:3000 (register account & device)
+(cd site && bun run dev) &                   # http://localhost:4321 (marketing & docs site)
 
 # Device 1 (creates the encrypted vault; you choose the passphrase)
 rbox init --folder ~/RenegadeBox --bucket my-box --endpoint http://localhost:8333 \
@@ -74,6 +76,9 @@ bun scripts/e2e.ts
 
 # 6. Real-time push E2E (Engine + Hub + Postgres, < 1s latency, 0 leaks)
 bun scripts/e2e-hub.ts
+
+# 7. Marketing & Documentation site (Astro static build & 39 assertions)
+(cd site && bun run build && bun test)
 ```
 
 ## License
