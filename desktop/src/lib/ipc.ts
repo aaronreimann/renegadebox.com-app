@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { Overview } from "./status";
-import type { AiConfigResponse, AiConfigUpdate, ConflictItem, NasTaxonomyScan, RecentFile, RouteDecision, VaultStatus } from "./types";
+import type { AiConfigResponse, AiConfigUpdate, ConflictItem, MountedVolume, NasTaxonomyScan, RecentFile, RouteDecision, VaultStatus } from "./types";
 
 declare global {
   interface Window {
@@ -181,6 +181,15 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> |
           explanation: "Contains invoice headers and payment terms matching Finance/Invoices rule.",
         };
         return decision;
+      }
+      case "choose_folder":
+        return "/Volumes/Synology/Files";
+      case "list_detected_volumes": {
+        const vols: MountedVolume[] = [
+          { name: "Synology (home)", path: "/Volumes/home" },
+          { name: "Synology (data)", path: "/Volumes/data" },
+        ];
+        return vols;
       }
       default:
         // open_file, reveal_in_finder, open_sync_folder, open_settings, … are no-ops in the browser.

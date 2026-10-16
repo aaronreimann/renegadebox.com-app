@@ -66,4 +66,9 @@ export interface RouteDecision {
   explanation: string;
 }
 
+export interface MountedVolume {
+  name: string;
+  path: string;
+}
+
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;

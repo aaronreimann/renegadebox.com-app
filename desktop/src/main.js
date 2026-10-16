@@ -361,6 +361,15 @@ Photos and media go to Media/Photos`,
           };
           return decision;
         }
+        case "choose_folder":
+          return "/Volumes/Synology/Files";
+        case "list_detected_volumes": {
+          const vols = [
+            { name: "Synology (home)", path: "/Volumes/home" },
+            { name: "Synology (data)", path: "/Volumes/data" }
+          ];
+          return vols;
+        }
         default:
           console.info(`[preview] ${cmd}`, args ?? "");
           return null;
@@ -804,7 +813,7 @@ Photos and media go to Media/Photos`,
           <button class="tab-btn" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
           <button class="tab-btn" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
           <button class="tab-btn" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
-          <button class="tab-btn" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>AI & NAS</span></button>
+          <button class="tab-btn" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>Smart Routing</span></button>
         </nav>
       </header>
 
@@ -897,69 +906,133 @@ Photos and media go to Media/Photos`,
       </div>
 
       <div id="tab-panel-ai" class="tab-panel" data-panel="ai">
-        <section class="group">
-          <h2 class="group-title">Smart Synology & SMB Routing</h2>
-          <p class="field-hint">Automatically analyze incoming files with OpenRouter AI and file them into the right folders on your Synology NAS.</p>
-
-          <label class="switch-row" style="margin-top:12px;">
-            <span>
-              <span class="field-label">Enable smart file routing</span>
-              <span class="field-hint">Use AI to route files into your Synology NAS directory tree.</span>
-            </span>
+        <!-- Master Feature Card -->
+        <div class="feature-hero-card">
+          <div class="feature-hero-content">
+            <div class="feature-hero-icon">${icons.sparkles(20)}</div>
+            <div class="feature-hero-text">
+              <div class="feature-hero-title-row">
+                <span class="feature-hero-title">Smart Synology & SMB Routing</span>
+                <span id="ai-status-pill" class="status-pill idle">Off</span>
+              </div>
+              <p class="feature-hero-desc">Analyze incoming files with OpenRouter AI and automatically organize them into your Synology NAS folders.</p>
+            </div>
+          </div>
+          <div class="feature-hero-action">
             <input id="ai-enabled-toggle" class="switch" type="checkbox" role="switch" />
-          </label>
+          </div>
+        </div>
 
-          <label class="field" style="margin-top:14px;">
-            <span class="field-label">Synology / SMB target folder</span>
-            <span class="field-row">
-              <input id="ai-smb-target-input" type="text" placeholder="/Volumes/Synology/Files" spellcheck="false" />
-              <button id="ai-scan-btn" class="btn" type="button">Scan Folders</button>
-            </span>
-            <span class="field-hint">The mounted SMB share path on this Mac (e.g. /Volumes/home or /Volumes/data).</span>
-            <span id="ai-scan-results" class="inline-message" style="display:block; margin-top:4px;"></span>
-          </label>
+        <!-- Detailed configuration: revealed only when enabled -->
+        <div id="ai-config-details" class="settings-subsections" hidden>
+          <!-- Card 1: Storage Destination -->
+          <section class="settings-card">
+            <div class="card-header">
+              <h3 class="card-title">${icons.folder(15)}<span>Synology NAS Destination</span></h3>
+            </div>
+            <div class="card-body">
+              <p class="field-hint">The mounted SMB share on this Mac where organized files are saved.</p>
+              
+              <div class="destination-picker-row">
+                <div class="destination-display">
+                  <span class="folder-glyph">${icons.folder(16)}</span>
+                  <input id="ai-smb-target-input" type="text" placeholder="/Volumes/home or /Volumes/data" spellcheck="false" />
+                </div>
+                <div class="destination-actions">
+                  <button id="ai-choose-folder-btn" class="btn" type="button">Choose…</button>
+                  <button id="ai-scan-btn" class="btn" type="button" title="Index NAS folders for AI routing">Scan</button>
+                </div>
+              </div>
 
-          <label class="field" style="margin-top:14px;">
-            <span class="field-label">OpenRouter API Key</span>
-            <span class="field-row">
-              <input id="ai-api-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" />
-            </span>
-            <span class="field-hint">Stored securely in your macOS Keychain. Used to query OpenRouter models.</span>
-            <span id="ai-key-status" class="inline-message"></span>
-          </label>
+              <div id="ai-volume-picker-container" class="volume-quick-select" hidden>
+                <span>Quick select:</span>
+                <select id="ai-volume-select" class="select-inline"></select>
+              </div>
 
-          <label class="field" style="margin-top:14px;">
-            <span class="field-label">AI Model</span>
-            <select id="ai-model-select" class="select" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text);">
-              <option value="google/gemini-2.0-flash-001">Google Gemini 2.0 Flash (Fastest, lowest cost)</option>
-              <option value="anthropic/claude-3.5-haiku">Anthropic Claude 3.5 Haiku (High accuracy)</option>
-              <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
-            </select>
-          </label>
+              <div id="ai-scan-results" class="scan-summary-badge" role="status"></div>
+            </div>
+          </section>
 
-          <label class="field" style="margin-top:14px;">
-            <span class="field-label">Your NAS organization rules</span>
-            <textarea id="ai-rules-input" rows="4" spellcheck="false" placeholder="Describe where files belong, e.g.:&#10;Invoices and receipts go to Finance/Invoices&#10;Tax documents (W-2, 1099) go to Finance/Taxes&#10;Photos and family media go to Media/Photos&#10;Contracts and proposals go to Work/Contracts"></textarea>
-            <span class="field-hint">Plain English instructions. The AI maps each file's content and name to these rules and your NAS directories.</span>
-          </label>
+          <!-- Card 2: AI Intelligence & OpenRouter -->
+          <section class="settings-card">
+            <div class="card-header">
+              <h3 class="card-title">${icons.sparkles(15)}<span>AI Intelligence (OpenRouter)</span></h3>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <label class="field" style="margin-bottom:0;">
+                  <span class="field-label">AI Model</span>
+                  <select id="ai-model-select" class="select-field">
+                    <option value="google/gemini-2.0-flash-001">Google Gemini 2.0 Flash (Fastest, low cost)</option>
+                    <option value="anthropic/claude-3.5-haiku">Anthropic Claude 3.5 Haiku (High accuracy)</option>
+                    <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
+                  </select>
+                  <span class="field-hint">Used to evaluate lightweight file snippets (<2KB) and match rules.</span>
+                </label>
 
-          <label class="switch-row" style="margin-top:14px;">
-            <span>
-              <span class="field-label">Move files automatically</span>
-              <span class="field-hint">When off, files stay in your inbox and RenegadeBox only suggests destination folders.</span>
-            </span>
-            <input id="ai-auto-route-toggle" class="switch" type="checkbox" role="switch" />
-          </label>
+                <label class="field" style="margin-bottom:0;">
+                  <div class="label-with-badge">
+                    <span class="field-label">OpenRouter API Key</span>
+                    <span id="ai-key-status" class="keychain-badge">Not configured</span>
+                  </div>
+                  <div class="password-field-wrapper">
+                    <input id="ai-api-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" />
+                    <button id="ai-key-toggle-btn" class="icon-btn-inline" type="button">Show</button>
+                  </div>
+                  <span class="field-hint">Protected by macOS Keychain. Never stored in plain text.</span>
+                </label>
+              </div>
+            </div>
+          </section>
 
-          <div class="group-actions" style="margin-top:16px;">
-            <button id="ai-save-btn" class="btn primary" type="button">Save AI Settings</button>
-            <button id="ai-test-btn" class="btn" type="button">Test Routing</button>
+          <!-- Card 3: Organization Rules -->
+          <section class="settings-card">
+            <div class="card-header">
+              <h3 class="card-title">${icons.doc(15)}<span>Organization Rules</span></h3>
+            </div>
+            <div class="card-body">
+              <p class="field-hint">Click a preset chip to add common rules, or type custom instructions:</p>
+              <div class="rule-chips-row">
+                <button type="button" class="rule-chip" data-rule="Invoices and receipts go to Finance/Invoices">+ Invoices</button>
+                <button type="button" class="rule-chip" data-rule="Tax documents (W-2, 1099) go to Finance/Taxes">+ Taxes</button>
+                <button type="button" class="rule-chip" data-rule="Photos and family media go to Media/Photos">+ Photos</button>
+                <button type="button" class="rule-chip" data-rule="Contracts and client proposals go to Work/Contracts">+ Contracts</button>
+              </div>
+              <textarea id="ai-rules-input" rows="3" spellcheck="false" placeholder="Invoices and receipts go to Finance/Invoices&#10;Tax documents go to Finance/Taxes&#10;Photos go to Media/Photos"></textarea>
+            </div>
+          </section>
+
+          <!-- Card 4: Automation Behavior -->
+          <section class="settings-card">
+            <div class="card-body">
+              <label class="switch-row compact">
+                <div class="switch-text">
+                  <span class="field-label">Move files automatically</span>
+                  <span class="field-hint">When off, files stay in your inbox and suggested destinations appear in the menu-bar popover.</span>
+                </div>
+                <input id="ai-auto-route-toggle" class="switch" type="checkbox" role="switch" />
+              </label>
+            </div>
+          </section>
+
+          <!-- Test Simulator Drawer -->
+          <div id="ai-test-result" class="test-drawer" hidden>
+            <div class="test-drawer-header">
+              <span>Routing Simulation</span>
+              <button id="ai-test-close-btn" class="icon-btn-inline" type="button" style="position:static;">Dismiss</button>
+            </div>
+            <div id="ai-test-output" class="test-drawer-body"></div>
+          </div>
+
+          <!-- Actions Dock -->
+          <div class="settings-action-bar">
+            <div class="action-bar-left">
+              <button id="ai-save-btn" class="btn primary" type="button">Save AI Settings</button>
+              <button id="ai-test-btn" class="btn" type="button">Test Route</button>
+            </div>
             <span id="ai-save-message" class="inline-message" role="status"></span>
           </div>
-          <div id="ai-test-result" class="confirm" hidden style="margin-top:12px; background:var(--bg-subtle, rgba(0,0,0,0.04)); padding:10px; border-radius:6px; font-size:12px; line-height:1.5;">
-            <div id="ai-test-output"></div>
-          </div>
-        </section>
+        </div>
       </div>
 
       <footer class="settings-footer">
@@ -1327,6 +1400,8 @@ Photos and media go to Media/Photos`,
     const aiEnabledToggle = $("ai-enabled-toggle");
     if (aiEnabledToggle && aiConfig) {
       aiEnabledToggle.checked = aiConfig.enabled;
+      const configDetails = $("ai-config-details");
+      const statusPill = $("ai-status-pill");
       const smbTargetInput = $("ai-smb-target-input");
       if (smbTargetInput)
         smbTargetInput.value = aiConfig.smb_target ?? "";
@@ -1341,21 +1416,100 @@ Photos and media go to Media/Photos`,
         autoRouteToggle.checked = aiConfig.auto_route;
       const apiKeyStatus = $("ai-key-status");
       const apiKeyInput = $("ai-api-key-input");
-      if (aiConfig.has_api_key) {
-        if (apiKeyStatus)
-          apiKeyStatus.textContent = "API key configured in Keychain.";
+      let hasApiKey = aiConfig.has_api_key;
+      const updatePill = () => {
+        if (!statusPill)
+          return;
+        if (!aiEnabledToggle.checked) {
+          statusPill.textContent = "Off";
+          statusPill.className = "status-pill idle";
+        } else if (!hasApiKey || !smbTargetInput?.value.trim()) {
+          statusPill.textContent = "Setup needed";
+          statusPill.className = "status-pill warning";
+        } else {
+          statusPill.textContent = "Active";
+          statusPill.className = "status-pill active";
+        }
+      };
+      if (configDetails)
+        configDetails.hidden = !aiConfig.enabled;
+      if (hasApiKey) {
+        if (apiKeyStatus) {
+          apiKeyStatus.textContent = "● Saved in Keychain";
+          apiKeyStatus.classList.add("configured");
+        }
         if (apiKeyInput)
-          apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep saved key)";
+          apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep current key)";
       } else {
-        if (apiKeyStatus)
-          apiKeyStatus.textContent = "No API key configured.";
+        if (apiKeyStatus) {
+          apiKeyStatus.textContent = "Not configured";
+          apiKeyStatus.classList.remove("configured");
+        }
       }
-      $("ai-scan-btn")?.addEventListener("click", async () => {
+      updatePill();
+      aiEnabledToggle.addEventListener("change", () => {
+        if (configDetails)
+          configDetails.hidden = !aiEnabledToggle.checked;
+        updatePill();
+      });
+      $("ai-choose-folder-btn")?.addEventListener("click", async () => {
+        try {
+          const chosen = await invoke2("choose_folder");
+          if (chosen && smbTargetInput) {
+            smbTargetInput.value = chosen;
+            updatePill();
+            triggerScan(chosen);
+          }
+        } catch (err) {
+          flash("ai-save-message", `Could not open folder picker: ${errText(err)}`, true);
+        }
+      });
+      (async () => {
+        try {
+          const volumes = await invoke2("list_detected_volumes");
+          const container = $("ai-volume-picker-container");
+          const select = $("ai-volume-select");
+          if (container && select && volumes && volumes.length > 0) {
+            container.hidden = false;
+            select.innerHTML = `<option value="">Choose detected volume…</option>` + volumes.map((v) => `<option value="${v.path}">${v.name} (${v.path})</option>`).join("");
+            select.addEventListener("change", () => {
+              if (select.value && smbTargetInput) {
+                smbTargetInput.value = select.value;
+                updatePill();
+                triggerScan(select.value);
+              }
+            });
+          }
+        } catch {}
+      })();
+      $("ai-key-toggle-btn")?.addEventListener("click", () => {
+        const btn = $("ai-key-toggle-btn");
+        if (!apiKeyInput || !btn)
+          return;
+        if (apiKeyInput.type === "password") {
+          apiKeyInput.type = "text";
+          btn.textContent = "Hide";
+        } else {
+          apiKeyInput.type = "password";
+          btn.textContent = "Show";
+        }
+      });
+      document.querySelectorAll(".rule-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const rule = chip.dataset.rule;
+          if (!rule || !rulesInput)
+            return;
+          const current = rulesInput.value.trim();
+          rulesInput.value = current ? `${current}
+${rule}` : rule;
+          rulesInput.focus();
+        });
+      });
+      const triggerScan = async (path) => {
         const scanResults = $("ai-scan-results");
-        const path = smbTargetInput?.value.trim() ?? "";
         if (!path) {
           if (scanResults)
-            scanResults.textContent = "Enter an SMB share path above first.";
+            scanResults.textContent = "Enter or choose an SMB share path above.";
           return;
         }
         if (scanResults)
@@ -1364,10 +1518,10 @@ Photos and media go to Media/Photos`,
           const scan = await invoke2("scan_nas_directories", { path });
           if (scanResults) {
             if (scan.directories.length === 0) {
-              scanResults.textContent = "No subdirectories found under share path.";
+              scanResults.textContent = "No subdirectories found under this share path.";
             } else {
-              const preview = scan.directories.slice(0, 5).join(", ");
-              const more = scan.directories.length > 5 ? ` +${scan.directories.length - 5} more` : "";
+              const preview = scan.directories.slice(0, 4).join(", ");
+              const more = scan.directories.length > 4 ? ` +${scan.directories.length - 4} more` : "";
               scanResults.textContent = `Found ${scan.directories.length} folders: ${preview}${more}`;
             }
           }
@@ -1375,6 +1529,10 @@ Photos and media go to Media/Photos`,
           if (scanResults)
             scanResults.textContent = `Scan failed: ${errText(err)}`;
         }
+      };
+      $("ai-scan-btn")?.addEventListener("click", () => {
+        const path = smbTargetInput?.value.trim() ?? "";
+        triggerScan(path);
       });
       $("ai-save-btn")?.addEventListener("click", async () => {
         const enabled = aiEnabledToggle.checked;
@@ -1390,13 +1548,17 @@ Photos and media go to Media/Photos`,
           });
           flash("ai-save-message", "Saved.");
           if (api_key) {
+            hasApiKey = true;
             if (apiKeyInput) {
               apiKeyInput.value = "";
               apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep saved key)";
             }
-            if (apiKeyStatus)
-              apiKeyStatus.textContent = "API key configured in Keychain.";
+            if (apiKeyStatus) {
+              apiKeyStatus.textContent = "● Saved in Keychain";
+              apiKeyStatus.classList.add("configured");
+            }
           }
+          updatePill();
         } catch (err) {
           flash("ai-save-message", errText(err), true);
         }
@@ -1416,6 +1578,11 @@ Photos and media go to Media/Photos`,
         } catch (err) {
           output.textContent = `Test failed: ${errText(err)}`;
         }
+      });
+      $("ai-test-close-btn")?.addEventListener("click", () => {
+        const resultBox = $("ai-test-result");
+        if (resultBox)
+          resultBox.hidden = true;
       });
     }
     $("reconnect-btn").addEventListener("click", () => void invoke2("open_setup"));

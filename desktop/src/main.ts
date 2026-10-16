@@ -8,7 +8,7 @@ import { renderPopover, renderConflictList, renderSettings, renderPopoverSetting
 import { friendlyError, type Overview } from "./lib/status";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "./lib/actions";
 import { PROVIDERS, SETUP_STEPS, MIN_PASSPHRASE, validateSetupStep, setupErrorStep, type ProviderId, type SetupValues } from "./lib/setup";
-import type { AiConfigResponse, ConflictItem, NasTaxonomyScan, RecentFile, Resolution, RouteDecision, VaultStatus } from "./lib/types";
+import type { AiConfigResponse, ConflictItem, MountedVolume, NasTaxonomyScan, RecentFile, Resolution, RouteDecision, VaultStatus } from "./lib/types";
 
 type View = "popover" | "settings" | "setup";
 
@@ -311,9 +311,12 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
   });
 
   // AI & NAS Routing controls
+  // AI & NAS Routing controls
   const aiEnabledToggle = $<HTMLInputElement>("ai-enabled-toggle");
   if (aiEnabledToggle && aiConfig) {
     aiEnabledToggle.checked = aiConfig.enabled;
+    const configDetails = $("ai-config-details");
+    const statusPill = $("ai-status-pill");
     const smbTargetInput = $<HTMLInputElement>("ai-smb-target-input");
     if (smbTargetInput) smbTargetInput.value = aiConfig.smb_target ?? "";
     const modelSelect = $<HTMLSelectElement>("ai-model-select");
@@ -325,18 +328,109 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
 
     const apiKeyStatus = $("ai-key-status");
     const apiKeyInput = $<HTMLInputElement>("ai-api-key-input");
-    if (aiConfig.has_api_key) {
-      if (apiKeyStatus) apiKeyStatus.textContent = "API key configured in Keychain.";
-      if (apiKeyInput) apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep saved key)";
-    } else {
-      if (apiKeyStatus) apiKeyStatus.textContent = "No API key configured.";
-    }
+    let hasApiKey = aiConfig.has_api_key;
 
-    $("ai-scan-btn")?.addEventListener("click", async () => {
+    const updatePill = () => {
+      if (!statusPill) return;
+      if (!aiEnabledToggle.checked) {
+        statusPill.textContent = "Off";
+        statusPill.className = "status-pill idle";
+      } else if (!hasApiKey || !smbTargetInput?.value.trim()) {
+        statusPill.textContent = "Setup needed";
+        statusPill.className = "status-pill warning";
+      } else {
+        statusPill.textContent = "Active";
+        statusPill.className = "status-pill active";
+      }
+    };
+
+    if (configDetails) configDetails.hidden = !aiConfig.enabled;
+
+    if (hasApiKey) {
+      if (apiKeyStatus) {
+        apiKeyStatus.textContent = "● Saved in Keychain";
+        apiKeyStatus.classList.add("configured");
+      }
+      if (apiKeyInput) apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep current key)";
+    } else {
+      if (apiKeyStatus) {
+        apiKeyStatus.textContent = "Not configured";
+        apiKeyStatus.classList.remove("configured");
+      }
+    }
+    updatePill();
+
+    // Toggle master switch
+    aiEnabledToggle.addEventListener("change", () => {
+      if (configDetails) configDetails.hidden = !aiEnabledToggle.checked;
+      updatePill();
+    });
+
+    // Native macOS folder picker
+    $("ai-choose-folder-btn")?.addEventListener("click", async () => {
+      try {
+        const chosen = await invoke<string | null>("choose_folder");
+        if (chosen && smbTargetInput) {
+          smbTargetInput.value = chosen;
+          updatePill();
+          triggerScan(chosen);
+        }
+      } catch (err) {
+        flash("ai-save-message", `Could not open folder picker: ${errText(err)}`, true);
+      }
+    });
+
+    // Detected mounted volumes under /Volumes
+    void (async () => {
+      try {
+        const volumes = await invoke<MountedVolume[]>("list_detected_volumes");
+        const container = $("ai-volume-picker-container");
+        const select = $<HTMLSelectElement>("ai-volume-select");
+        if (container && select && volumes && volumes.length > 0) {
+          container.hidden = false;
+          select.innerHTML = `<option value="">Choose detected volume…</option>` +
+            volumes.map((v) => `<option value="${v.path}">${v.name} (${v.path})</option>`).join("");
+          select.addEventListener("change", () => {
+            if (select.value && smbTargetInput) {
+              smbTargetInput.value = select.value;
+              updatePill();
+              triggerScan(select.value);
+            }
+          });
+        }
+      } catch {
+        // Silently skip if volume detection fails
+      }
+    })();
+
+    // Show/hide API key toggle
+    $("ai-key-toggle-btn")?.addEventListener("click", () => {
+      const btn = $("ai-key-toggle-btn");
+      if (!apiKeyInput || !btn) return;
+      if (apiKeyInput.type === "password") {
+        apiKeyInput.type = "text";
+        btn.textContent = "Hide";
+      } else {
+        apiKeyInput.type = "password";
+        btn.textContent = "Show";
+      }
+    });
+
+    // Rule preset chips
+    document.querySelectorAll<HTMLButtonElement>(".rule-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const rule = chip.dataset.rule;
+        if (!rule || !rulesInput) return;
+        const current = rulesInput.value.trim();
+        rulesInput.value = current ? `${current}\n${rule}` : rule;
+        rulesInput.focus();
+      });
+    });
+
+    const triggerScan = async (path: string) => {
       const scanResults = $("ai-scan-results");
-      const path = smbTargetInput?.value.trim() ?? "";
       if (!path) {
-        if (scanResults) scanResults.textContent = "Enter an SMB share path above first.";
+        if (scanResults) scanResults.textContent = "Enter or choose an SMB share path above.";
         return;
       }
       if (scanResults) scanResults.textContent = "Scanning directories…";
@@ -344,16 +438,21 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
         const scan = await invoke<NasTaxonomyScan>("scan_nas_directories", { path });
         if (scanResults) {
           if (scan.directories.length === 0) {
-            scanResults.textContent = "No subdirectories found under share path.";
+            scanResults.textContent = "No subdirectories found under this share path.";
           } else {
-            const preview = scan.directories.slice(0, 5).join(", ");
-            const more = scan.directories.length > 5 ? ` +${scan.directories.length - 5} more` : "";
+            const preview = scan.directories.slice(0, 4).join(", ");
+            const more = scan.directories.length > 4 ? ` +${scan.directories.length - 4} more` : "";
             scanResults.textContent = `Found ${scan.directories.length} folders: ${preview}${more}`;
           }
         }
       } catch (err) {
         if (scanResults) scanResults.textContent = `Scan failed: ${errText(err)}`;
       }
+    };
+
+    $("ai-scan-btn")?.addEventListener("click", () => {
+      const path = smbTargetInput?.value.trim() ?? "";
+      triggerScan(path);
     });
 
     $("ai-save-btn")?.addEventListener("click", async () => {
@@ -371,12 +470,17 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
         });
         flash("ai-save-message", "Saved.");
         if (api_key) {
+          hasApiKey = true;
           if (apiKeyInput) {
             apiKeyInput.value = "";
             apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep saved key)";
           }
-          if (apiKeyStatus) apiKeyStatus.textContent = "API key configured in Keychain.";
+          if (apiKeyStatus) {
+            apiKeyStatus.textContent = "● Saved in Keychain";
+            apiKeyStatus.classList.add("configured");
+          }
         }
+        updatePill();
       } catch (err) {
         flash("ai-save-message", errText(err), true);
       }
@@ -400,6 +504,11 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
       } catch (err) {
         output.textContent = `Test failed: ${errText(err)}`;
       }
+    });
+
+    $("ai-test-close-btn")?.addEventListener("click", () => {
+      const resultBox = $("ai-test-result");
+      if (resultBox) resultBox.hidden = true;
     });
   }
 

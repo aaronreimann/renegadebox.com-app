@@ -1060,6 +1060,58 @@ pub fn save_ai_config(payload: SaveAiConfigPayload) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MountedVolume {
+    pub name: String,
+    pub path: String,
+}
+
+#[tauri::command]
+pub fn list_detected_volumes() -> Result<Vec<MountedVolume>, String> {
+    let mut volumes = Vec::new();
+    let volumes_dir = std::path::Path::new("/Volumes");
+    if let Ok(entries) = std::fs::read_dir(volumes_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "Recovery" || name == "Macintosh HD" {
+                continue;
+            }
+            volumes.push(MountedVolume {
+                name,
+                path: path.to_string_lossy().to_string(),
+            });
+        }
+    }
+    Ok(volumes)
+}
+
+#[tauri::command]
+pub fn choose_folder() -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("osascript")
+            .args(["-e", "POSIX path of (choose folder with prompt \"Select your Synology NAS folder:\")"])
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if path.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(path.trim_end_matches('/').to_string()))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(None)
+    }
+}
+
 #[tauri::command]
 pub fn scan_nas_directories(target_path: String) -> Result<Vec<String>, String> {
     let p = std::path::PathBuf::from(target_path.trim());
