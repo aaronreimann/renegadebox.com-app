@@ -263,6 +263,13 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
               </span>
             </span>
           </div>
+          <div class="kv">
+            <span class="kv-label">Finder badges</span>
+            <span class="kv-value" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span class="field-hint" style="margin:0;">Status badges in Finder</span>
+              <button id="finder-extension-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Enable in macOS…</button>
+            </span>
+          </div>
           <label class="switch-row">
             <span>
               <span class="field-label">Start at login</span>

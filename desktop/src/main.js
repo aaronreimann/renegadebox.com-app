@@ -363,6 +363,8 @@ Photos and media go to Media/Photos`,
         }
         case "choose_folder":
           return "/Volumes/Synology/Files";
+        case "open_finder_extensions":
+          return null;
         case "list_detected_volumes": {
           const vols = [
             { name: "Synology (home)", path: "/Volumes/home" },
@@ -837,6 +839,13 @@ Photos and media go to Media/Photos`,
                 <button id="settings-open-folder-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Open in Finder</button>
                 <button id="add-finder-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Add to Sidebar</button>
               </span>
+            </span>
+          </div>
+          <div class="kv">
+            <span class="kv-label">Finder badges</span>
+            <span class="kv-value" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <span class="field-hint" style="margin:0;">Status badges in Finder</span>
+              <button id="finder-extension-btn" class="btn" style="padding:3px 8px; font-size:12px;" type="button">Enable in macOS…</button>
             </span>
           </div>
           <label class="switch-row">
@@ -1389,6 +1398,7 @@ Photos and media go to Media/Photos`,
       }
     });
     $("settings-open-folder-btn")?.addEventListener("click", () => void invoke2("open_sync_folder"));
+    $("finder-extension-btn")?.addEventListener("click", () => void invoke2("open_finder_extensions"));
     $("add-finder-btn")?.addEventListener("click", async () => {
       try {
         await invoke2("add_to_finder_favorites");

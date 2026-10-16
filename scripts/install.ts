@@ -58,6 +58,24 @@ if (process.argv.includes("--desktop")) {
   mkdirSync(join(homedir(), "Applications"), { recursive: true });
   if (existsSync(dest)) rmSync(dest, { recursive: true, force: true });
   cpSync(join(bundleDir, app), dest, { recursive: true });
+
+  // --- Finder Sync Extension
+  console.log("Building Finder Sync extension…");
+  const pluginsDir = join(dest, "Contents/PlugIns");
+  mkdirSync(pluginsDir, { recursive: true });
+  const appexDest = join(pluginsDir, "RenegadeBoxFinderSync.appex");
+  await $`bun ${join(ROOT, "desktop/finder-sync/build.ts")} ${appexDest}`.env(desktopEnv);
+
+  if (canSign) {
+    await $`codesign --force --sign ${IDENTITY!} --identifier com.renegadebox.desktop.findersync ${appexDest}`.quiet();
+    await $`codesign --force --sign ${IDENTITY!} ${dest}`.quiet();
+  }
+
+  // Register with macOS pluginkit
+  await $`pluginkit -a ${appexDest}`.nothrow().quiet();
+  await $`pluginkit -e use -i com.renegadebox.desktop.findersync`.nothrow().quiet();
+  console.log("✓ Registered Finder Sync extension with macOS");
+
   const sig = await $`codesign -dv --verbose=2 ${dest}`.nothrow().quiet();
   const authority = sig.stderr.toString().match(/Authority=(.*)/)?.[1] ?? "ad-hoc / unsigned";
   console.log(`✓ ${dest} (signed by: ${authority})`);

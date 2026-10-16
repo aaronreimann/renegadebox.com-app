@@ -637,6 +637,18 @@ pub fn open_sync_folder() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn open_finder_extensions() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.ExtensionsPreferences")
+            .spawn()
+            .map_err(|e| format!("Failed to open extensions preferences: {e}"))?;
+    }
+    Ok(())
+}
+
 /// `report.pdf` + `" (Laptop version)"` -> `report (Laptop version).pdf`, numbered if that name is taken.
 fn free_name(dir: &std::path::Path, original: &str, suffix: &str) -> std::path::PathBuf {
     let (stem, ext) = match original.rfind('.') {

@@ -143,7 +143,8 @@ pub fn run() {
             commands::scan_nas_directories,
             commands::test_ai_routing,
             commands::choose_folder,
-            commands::list_detected_volumes
+            commands::list_detected_volumes,
+            commands::open_finder_extensions
         ])
         .run(tauri::generate_context!())
         .expect("error while running RenegadeBox");

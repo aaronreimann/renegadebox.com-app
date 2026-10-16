@@ -184,6 +184,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> |
       }
       case "choose_folder":
         return "/Volumes/Synology/Files";
+      case "open_finder_extensions":
+        return null;
       case "list_detected_volumes": {
         const vols: MountedVolume[] = [
           { name: "Synology (home)", path: "/Volumes/home" },

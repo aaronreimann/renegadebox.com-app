@@ -301,6 +301,7 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
   });
 
   $("settings-open-folder-btn")?.addEventListener("click", () => void invoke("open_sync_folder"));
+  $("finder-extension-btn")?.addEventListener("click", () => void invoke("open_finder_extensions"));
   $("add-finder-btn")?.addEventListener("click", async () => {
     try {
       await invoke("add_to_finder_favorites");
