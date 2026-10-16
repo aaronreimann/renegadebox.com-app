@@ -9,3 +9,4 @@ pub mod state;
 pub mod storage;
 pub mod watch;
 pub mod hub;
+pub mod ai;

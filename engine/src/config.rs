@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub const SECRET_S3: &str = "s3-secret-access-key";
 pub const SECRET_MASTER: &str = "master-key";
 pub const SECRET_DEVICE_TOKEN: &str = "device-token";
+pub const SECRET_OPENROUTER: &str = "openrouter-api-key";
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -34,6 +35,8 @@ pub struct Config {
     pub vault_pin: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hub_url: Option<String>,
+    #[serde(default)]
+    pub ai: crate::ai::AiRouterConfig,
 }
 
 #[derive(Clone, Debug)]

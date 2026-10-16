@@ -1,6 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { Overview } from "./status";
-import type { ConflictItem, RecentFile, VaultStatus } from "./types";
+import type { AiConfigResponse, AiConfigUpdate, ConflictItem, NasTaxonomyScan, RecentFile, RouteDecision, VaultStatus } from "./types";
 
 declare global {
   interface Window {
@@ -71,6 +71,14 @@ const SAMPLE_CONFLICTS = (now: number): ConflictItem[] => [
 let mockPaused: boolean | null = null;
 let mockKeyStore = "System keychain";
 let mockAutostart = true;
+let mockAiConfig: AiConfigResponse = {
+  enabled: false,
+  model: "google/gemini-2.0-flash-001",
+  smb_target: "/Volumes/home",
+  rules: "Invoices and receipts go to Finance/Invoices\nPhotos and media go to Media/Photos",
+  auto_route: true,
+  has_api_key: true,
+};
 
 export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> | undefined, scenario: MockScenario): Promise<T> {
   const now = Date.now();
@@ -132,6 +140,48 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, unknown> |
         return "Opened folder in Finder";
       case "setup_vault":
         return new Promise((resolve) => setTimeout(() => resolve({ initialized: true }), 900));
+      case "get_ai_config":
+        return mockAiConfig;
+      case "save_ai_config": {
+        const payload = args?.payload as AiConfigUpdate | undefined;
+        if (payload) {
+          mockAiConfig = {
+            enabled: payload.enabled,
+            model: payload.model,
+            smb_target: payload.smb_target,
+            rules: payload.rules,
+            auto_route: payload.auto_route,
+            has_api_key: Boolean(payload.api_key || mockAiConfig.has_api_key),
+          };
+        }
+        return true;
+      }
+      case "scan_nas_directories": {
+        const scan: NasTaxonomyScan = {
+          root: (args?.path as string) || "/Volumes/home",
+          directories: [
+            "Finance",
+            "Finance/Invoices",
+            "Finance/Taxes",
+            "Media",
+            "Media/Photos",
+            "Media/Videos",
+            "Work",
+            "Work/Projects",
+            "Work/Proposals",
+          ],
+        };
+        return scan;
+      }
+      case "test_ai_routing": {
+        const decision: RouteDecision = {
+          destination_folder: "Finance/Invoices",
+          suggested_filename: "Invoice_ACME_Oct2026.pdf",
+          confidence: 0.95,
+          explanation: "Contains invoice headers and payment terms matching Finance/Invoices rule.",
+        };
+        return decision;
+      }
       default:
         // open_file, reveal_in_finder, open_sync_folder, open_settings, … are no-ops in the browser.
         console.info(`[preview] ${cmd}`, args ?? "");

@@ -237,6 +237,7 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
           <button class="tab-btn" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
           <button class="tab-btn" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
           <button class="tab-btn" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
+          <button class="tab-btn" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>AI & NAS</span></button>
         </nav>
       </header>
 
@@ -323,6 +324,72 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
           <div class="group-actions">
             <button id="ignored-save" class="btn" type="button">Save</button>
             <span id="ignored-message" class="inline-message" role="status"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="tab-panel-ai" class="tab-panel" data-panel="ai">
+        <section class="group">
+          <h2 class="group-title">Smart Synology & SMB Routing</h2>
+          <p class="field-hint">Automatically analyze incoming files with OpenRouter AI and file them into the right folders on your Synology NAS.</p>
+
+          <label class="switch-row" style="margin-top:12px;">
+            <span>
+              <span class="field-label">Enable smart file routing</span>
+              <span class="field-hint">Use AI to route files into your Synology NAS directory tree.</span>
+            </span>
+            <input id="ai-enabled-toggle" class="switch" type="checkbox" role="switch" />
+          </label>
+
+          <label class="field" style="margin-top:14px;">
+            <span class="field-label">Synology / SMB target folder</span>
+            <span class="field-row">
+              <input id="ai-smb-target-input" type="text" placeholder="/Volumes/Synology/Files" spellcheck="false" />
+              <button id="ai-scan-btn" class="btn" type="button">Scan Folders</button>
+            </span>
+            <span class="field-hint">The mounted SMB share path on this Mac (e.g. /Volumes/home or /Volumes/data).</span>
+            <span id="ai-scan-results" class="inline-message" style="display:block; margin-top:4px;"></span>
+          </label>
+
+          <label class="field" style="margin-top:14px;">
+            <span class="field-label">OpenRouter API Key</span>
+            <span class="field-row">
+              <input id="ai-api-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" />
+            </span>
+            <span class="field-hint">Stored securely in your macOS Keychain. Used to query OpenRouter models.</span>
+            <span id="ai-key-status" class="inline-message"></span>
+          </label>
+
+          <label class="field" style="margin-top:14px;">
+            <span class="field-label">AI Model</span>
+            <select id="ai-model-select" class="select" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text);">
+              <option value="google/gemini-2.0-flash-001">Google Gemini 2.0 Flash (Fastest, lowest cost)</option>
+              <option value="anthropic/claude-3.5-haiku">Anthropic Claude 3.5 Haiku (High accuracy)</option>
+              <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini</option>
+            </select>
+          </label>
+
+          <label class="field" style="margin-top:14px;">
+            <span class="field-label">Your NAS organization rules</span>
+            <textarea id="ai-rules-input" rows="4" spellcheck="false" placeholder="Describe where files belong, e.g.:&#10;Invoices and receipts go to Finance/Invoices&#10;Tax documents (W-2, 1099) go to Finance/Taxes&#10;Photos and family media go to Media/Photos&#10;Contracts and proposals go to Work/Contracts"></textarea>
+            <span class="field-hint">Plain English instructions. The AI maps each file's content and name to these rules and your NAS directories.</span>
+          </label>
+
+          <label class="switch-row" style="margin-top:14px;">
+            <span>
+              <span class="field-label">Move files automatically</span>
+              <span class="field-hint">When off, files stay in your inbox and RenegadeBox only suggests destination folders.</span>
+            </span>
+            <input id="ai-auto-route-toggle" class="switch" type="checkbox" role="switch" />
+          </label>
+
+          <div class="group-actions" style="margin-top:16px;">
+            <button id="ai-save-btn" class="btn primary" type="button">Save AI Settings</button>
+            <button id="ai-test-btn" class="btn" type="button">Test Routing</button>
+            <span id="ai-save-message" class="inline-message" role="status"></span>
+          </div>
+          <div id="ai-test-result" class="confirm" hidden style="margin-top:12px; background:var(--bg-subtle, rgba(0,0,0,0.04)); padding:10px; border-radius:6px; font-size:12px; line-height:1.5;">
+            <div id="ai-test-output"></div>
           </div>
         </section>
       </div>

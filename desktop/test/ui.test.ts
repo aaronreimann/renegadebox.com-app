@@ -11,7 +11,7 @@ import {
 import { validateSetupStep, PROVIDERS, providerLabel, type SetupValues } from "../src/lib/setup";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "../src/lib/actions";
 import { mockInvoke } from "../src/lib/ipc";
-import type { ConflictItem, RecentFile, VaultStatus } from "../src/lib/types";
+import type { AiConfigResponse, ConflictItem, NasTaxonomyScan, RecentFile, RouteDecision, VaultStatus } from "../src/lib/types";
 
 const NOW = Date.UTC(2026, 9, 15, 12, 0, 0);
 
@@ -262,10 +262,26 @@ describe("settings", () => {
     expect(html).toContain('data-tab="storage"');
     expect(html).toContain('data-tab="security"');
     expect(html).toContain('data-tab="ignored"');
+    expect(html).toContain('data-tab="ai"');
     expect(html).toContain('id="tab-panel-general"');
     expect(html).toContain('id="tab-panel-storage"');
     expect(html).toContain('id="tab-panel-security"');
     expect(html).toContain('id="tab-panel-ignored"');
+    expect(html).toContain('id="tab-panel-ai"');
+  });
+
+  it("renders AI & Synology routing settings tab with all controls", () => {
+    const html = renderSettings({ status, autostart: true, ignored: [] });
+    expect(html).toContain('id="ai-enabled-toggle"');
+    expect(html).toContain('id="ai-smb-target-input"');
+    expect(html).toContain('id="ai-scan-btn"');
+    expect(html).toContain('id="ai-api-key-input"');
+    expect(html).toContain('id="ai-model-select"');
+    expect(html).toContain('id="ai-rules-input"');
+    expect(html).toContain('id="ai-auto-route-toggle"');
+    expect(html).toContain('id="ai-save-btn"');
+    expect(html).toContain('id="ai-test-btn"');
+    expect(html).toContain('id="ai-test-result"');
   });
 
   it("renders settings directly inside popover for quick access", () => {
@@ -333,5 +349,33 @@ describe("browser mock mode", () => {
     expect(ov.initialized).toBe(false);
     const err = await mockInvoke<Overview>("get_sync_overview", undefined, "error");
     expect(err.error).toBeTruthy();
+  });
+
+  it("handles AI and Synology commands in mock mode", async () => {
+    const aiConfig = await mockInvoke<AiConfigResponse>("get_ai_config", undefined, "ok");
+    expect(aiConfig).toHaveProperty("model");
+    expect(aiConfig).toHaveProperty("auto_route");
+
+    await mockInvoke<boolean>("save_ai_config", {
+      payload: {
+        enabled: true,
+        model: "anthropic/claude-3.5-haiku",
+        smb_target: "/Volumes/home",
+        rules: "Invoices to Finance",
+        auto_route: true,
+      },
+    }, "ok");
+
+    const updated = await mockInvoke<AiConfigResponse>("get_ai_config", undefined, "ok");
+    expect(updated.enabled).toBe(true);
+    expect(updated.model).toBe("anthropic/claude-3.5-haiku");
+
+    const scan = await mockInvoke<NasTaxonomyScan>("scan_nas_directories", { path: "/Volumes/home" }, "ok");
+    expect(scan.directories.length).toBeGreaterThan(0);
+    expect(scan.directories).toContain("Finance/Invoices");
+
+    const route = await mockInvoke<RouteDecision>("test_ai_routing", { samplePath: "invoice.pdf" }, "ok");
+    expect(route.destination_folder).toBe("Finance/Invoices");
+    expect(route.confidence).toBeGreaterThan(0.5);
   });
 });

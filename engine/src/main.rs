@@ -172,6 +172,7 @@ async fn main() -> Result<()> {
                 key_store: if insecure_file_keystore { KeyStoreKind::InsecureFile } else { KeyStoreKind::Keychain },
                 vault_pin: String::new(),
                 hub_url,
+                ai: Default::default(),
             };
             let storage = engine::storage_for(&cfg, &secret);
             let exists = storage

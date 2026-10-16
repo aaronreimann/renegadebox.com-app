@@ -899,6 +899,7 @@ pub async fn setup_vault(
         key_store: renegadebox_engine::config::KeyStoreKind::Keychain,
         vault_pin: String::new(),
         hub_url: hub_url.clone(),
+        ai: Default::default(),
     };
 
     let storage = renegadebox_engine::engine::storage_for(&cfg, &secret);
@@ -996,6 +997,91 @@ pub fn set_autostart_enabled(enabled: bool) -> Result<bool, String> {
         }
         Ok(false)
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AiConfigView {
+    pub enabled: bool,
+    pub model: String,
+    pub smb_target: Option<String>,
+    pub rules: Option<String>,
+    pub auto_route: bool,
+    pub has_api_key: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SaveAiConfigPayload {
+    pub enabled: bool,
+    pub model: String,
+    pub smb_target: Option<String>,
+    pub rules: Option<String>,
+    pub auto_route: bool,
+    pub api_key: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_ai_config() -> Result<AiConfigView, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let has_api_key = profile.get_secret(&cfg, renegadebox_engine::config::SECRET_OPENROUTER).is_ok();
+    Ok(AiConfigView {
+        enabled: cfg.ai.enabled,
+        model: cfg.ai.model,
+        smb_target: cfg.ai.smb_target,
+        rules: cfg.ai.rules,
+        auto_route: cfg.ai.auto_route,
+        has_api_key,
+    })
+}
+
+#[tauri::command]
+pub fn save_ai_config(payload: SaveAiConfigPayload) -> Result<(), String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let mut cfg = profile.load().map_err(|e| e.to_string())?;
+
+    cfg.ai.enabled = payload.enabled;
+    cfg.ai.model = if payload.model.trim().is_empty() {
+        renegadebox_engine::ai::DEFAULT_AI_MODEL.to_string()
+    } else {
+        payload.model.trim().to_string()
+    };
+    cfg.ai.smb_target = payload.smb_target.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    cfg.ai.rules = payload.rules.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    cfg.ai.auto_route = payload.auto_route;
+
+    if let Some(key) = payload.api_key {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            profile.set_secret(&cfg, renegadebox_engine::config::SECRET_OPENROUTER, trimmed).map_err(|e| e.to_string())?;
+        }
+    }
+
+    profile.save(&cfg).map_err(|e| format!("Failed to save config: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn scan_nas_directories(target_path: String) -> Result<Vec<String>, String> {
+    let p = std::path::PathBuf::from(target_path.trim());
+    renegadebox_engine::ai::scan_nas_taxonomy(&p, 3).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn test_ai_routing(sample_file: String) -> Result<renegadebox_engine::ai::RouteDecision, String> {
+    let profile = Profile::locate().map_err(|e| e.to_string())?;
+    let cfg = profile.load().map_err(|e| e.to_string())?;
+    let api_key = profile.get_secret(&cfg, renegadebox_engine::config::SECRET_OPENROUTER)
+        .map_err(|_| "OpenRouter API key is missing. Enter your key in Settings.".to_string())?;
+
+    let smb_target = cfg.ai.smb_target.as_ref()
+        .ok_or_else(|| "Synology/SMB target folder is not configured. Set the path in Settings.".to_string())?;
+
+    let file_path = std::path::PathBuf::from(sample_file.trim());
+    let smb_path = std::path::PathBuf::from(smb_target.trim());
+    let rules = cfg.ai.rules.as_deref().unwrap_or("");
+
+    renegadebox_engine::ai::route_file(&api_key, &cfg.ai.model, &file_path, &smb_path, rules).await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -36,4 +36,34 @@ export interface ConflictItem {
 
 export type Resolution = "keep_both" | "keep_conflicted" | "keep_local";
 
+export interface AiConfigResponse {
+  enabled: boolean;
+  model: string;
+  smb_target: string | null;
+  rules: string | null;
+  auto_route: boolean;
+  has_api_key: boolean;
+}
+
+export interface AiConfigUpdate {
+  enabled: boolean;
+  model: string;
+  smb_target: string | null;
+  rules: string | null;
+  auto_route: boolean;
+  api_key?: string | null;
+}
+
+export interface NasTaxonomyScan {
+  root: string;
+  directories: string[];
+}
+
+export interface RouteDecision {
+  destination_folder: string;
+  suggested_filename: string;
+  confidence: number;
+  explanation: string;
+}
+
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;

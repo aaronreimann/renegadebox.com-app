@@ -26,6 +26,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 notify = "8.2.0"
 notify-debouncer-full = "0.7.0"
 rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rpassword = "7.5.4"
 futures-util = "0.3"
 tokio-tungstenite = { version = "0.24", features = ["connect"] }

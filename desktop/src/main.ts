@@ -8,7 +8,7 @@ import { renderPopover, renderConflictList, renderSettings, renderPopoverSetting
 import { friendlyError, type Overview } from "./lib/status";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "./lib/actions";
 import { PROVIDERS, SETUP_STEPS, MIN_PASSPHRASE, validateSetupStep, setupErrorStep, type ProviderId, type SetupValues } from "./lib/setup";
-import type { ConflictItem, RecentFile, Resolution, VaultStatus } from "./lib/types";
+import type { AiConfigResponse, ConflictItem, NasTaxonomyScan, RecentFile, Resolution, RouteDecision, VaultStatus } from "./lib/types";
 
 type View = "popover" | "settings" | "setup";
 
@@ -191,13 +191,21 @@ function initPopover() {
 // ---------------------------------------------------------------- settings
 
 async function loadSettings() {
-  const [status, autostart, ignored] = await Promise.all([
+  const [status, autostart, ignored, aiConfig] = await Promise.all([
     invoke<VaultStatus>("get_vault_status"),
     invoke<boolean>("is_autostart_enabled").catch(() => false),
     invoke<string[]>("get_ignored_patterns").catch(() => [] as string[]),
+    invoke<AiConfigResponse>("get_ai_config").catch(() => ({
+      enabled: false,
+      model: "google/gemini-2.0-flash-001",
+      smb_target: null,
+      rules: null,
+      auto_route: false,
+      has_api_key: false,
+    })),
   ]);
   root().innerHTML = renderSettings({ status, autostart, ignored });
-  bindSettings(status);
+  bindSettings(status, aiConfig);
 
   // Tab switching in settings window
   document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
@@ -218,7 +226,7 @@ function flash(id: string, text: string, isError = false) {
   el.classList.toggle("error", isError);
 }
 
-function bindSettings(status: VaultStatus) {
+function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
   let keyStore = keyStoreKind(status.key_store);
   const radio = (v: string) => document.querySelector<HTMLInputElement>(`input[name="key-store"][value="${v}"]`)!;
   const confirmBox = $("key-store-confirm")!;
@@ -301,6 +309,99 @@ function bindSettings(status: VaultStatus) {
       await invoke("open_sync_folder");
     }
   });
+
+  // AI & NAS Routing controls
+  const aiEnabledToggle = $<HTMLInputElement>("ai-enabled-toggle");
+  if (aiEnabledToggle && aiConfig) {
+    aiEnabledToggle.checked = aiConfig.enabled;
+    const smbTargetInput = $<HTMLInputElement>("ai-smb-target-input");
+    if (smbTargetInput) smbTargetInput.value = aiConfig.smb_target ?? "";
+    const modelSelect = $<HTMLSelectElement>("ai-model-select");
+    if (modelSelect) modelSelect.value = aiConfig.model || "google/gemini-2.0-flash-001";
+    const rulesInput = $<HTMLTextAreaElement>("ai-rules-input");
+    if (rulesInput) rulesInput.value = aiConfig.rules ?? "";
+    const autoRouteToggle = $<HTMLInputElement>("ai-auto-route-toggle");
+    if (autoRouteToggle) autoRouteToggle.checked = aiConfig.auto_route;
+
+    const apiKeyStatus = $("ai-key-status");
+    const apiKeyInput = $<HTMLInputElement>("ai-api-key-input");
+    if (aiConfig.has_api_key) {
+      if (apiKeyStatus) apiKeyStatus.textContent = "API key configured in Keychain.";
+      if (apiKeyInput) apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep saved key)";
+    } else {
+      if (apiKeyStatus) apiKeyStatus.textContent = "No API key configured.";
+    }
+
+    $("ai-scan-btn")?.addEventListener("click", async () => {
+      const scanResults = $("ai-scan-results");
+      const path = smbTargetInput?.value.trim() ?? "";
+      if (!path) {
+        if (scanResults) scanResults.textContent = "Enter an SMB share path above first.";
+        return;
+      }
+      if (scanResults) scanResults.textContent = "Scanning directories…";
+      try {
+        const scan = await invoke<NasTaxonomyScan>("scan_nas_directories", { path });
+        if (scanResults) {
+          if (scan.directories.length === 0) {
+            scanResults.textContent = "No subdirectories found under share path.";
+          } else {
+            const preview = scan.directories.slice(0, 5).join(", ");
+            const more = scan.directories.length > 5 ? ` +${scan.directories.length - 5} more` : "";
+            scanResults.textContent = `Found ${scan.directories.length} folders: ${preview}${more}`;
+          }
+        }
+      } catch (err) {
+        if (scanResults) scanResults.textContent = `Scan failed: ${errText(err)}`;
+      }
+    });
+
+    $("ai-save-btn")?.addEventListener("click", async () => {
+      const enabled = aiEnabledToggle.checked;
+      const smb_target = smbTargetInput?.value.trim() || null;
+      const api_key = apiKeyInput?.value.trim() || null;
+      const model = modelSelect?.value || "google/gemini-2.0-flash-001";
+      const rules = rulesInput?.value.trim() || null;
+      const auto_route = autoRouteToggle ? autoRouteToggle.checked : false;
+
+      flash("ai-save-message", "Saving…");
+      try {
+        await invoke("save_ai_config", {
+          payload: { enabled, model, smb_target, rules, auto_route, api_key },
+        });
+        flash("ai-save-message", "Saved.");
+        if (api_key) {
+          if (apiKeyInput) {
+            apiKeyInput.value = "";
+            apiKeyInput.placeholder = "•••••••••••••••• (Leave blank to keep saved key)";
+          }
+          if (apiKeyStatus) apiKeyStatus.textContent = "API key configured in Keychain.";
+        }
+      } catch (err) {
+        flash("ai-save-message", errText(err), true);
+      }
+    });
+
+    $("ai-test-btn")?.addEventListener("click", async () => {
+      const output = $("ai-test-output");
+      const resultBox = $("ai-test-result");
+      if (!output || !resultBox) return;
+
+      resultBox.hidden = false;
+      output.textContent = "Analyzing sample file with OpenRouter…";
+      try {
+        const recent = await invoke<RecentFile[]>("list_recent_files", { limit: 1 }).catch(() => []);
+        const samplePath = recent[0]?.path || "Finance/Sample_Invoice_2026.pdf";
+        const decision = await invoke<RouteDecision>("test_ai_routing", { samplePath });
+        output.innerHTML = `<strong>Destination:</strong> ${decision.destination_folder}<br/>` +
+          `<strong>Suggested Name:</strong> ${decision.suggested_filename}<br/>` +
+          `<strong>Confidence:</strong> ${(decision.confidence * 100).toFixed(0)}%<br/>` +
+          `<strong>Reasoning:</strong> ${decision.explanation}`;
+      } catch (err) {
+        output.textContent = `Test failed: ${errText(err)}`;
+      }
+    });
+  }
 
   $("reconnect-btn")!.addEventListener("click", () => void invoke("open_setup"));
   $("quit-btn")!.addEventListener("click", () => void invoke("quit_app"));
