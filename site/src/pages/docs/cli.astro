@@ -1,0 +1,132 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+
+<DocsLayout title="CLI Command Reference" activeDoc="cli">
+  <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.1); border: 1px solid var(--border-cyan); color: #7dd3fc; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+    CLI Reference (v0.1.0)
+  </div>
+
+  <h1>CLI Command Reference</h1>
+  <p style="font-size: 1.15rem; color: #cbd5e1; line-height: 1.7; margin-bottom: 2rem;">
+    The <code>rbox</code> command-line interface is a single native binary that powers encryption, chunking, local state caching, S3 communication, and real-time WebSocket syncing.
+  </p>
+
+  <h2>Global Syntax</h2>
+  <pre><code>rbox [OPTIONS] &lt;SUBCOMMAND&gt;</code></pre>
+  <p>Available global options:</p>
+  <ul>
+    <li><code>-v, --verbose</code>: Enable verbose debugging logs (includes chunk hash outputs and socket frames).</li>
+    <li><code>-h, --help</code>: Print help information.</li>
+    <li><code>-V, --version</code>: Print version information.</li>
+  </ul>
+
+  <h2>Subcommands</h2>
+
+  <div class="glass-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+    <h3 style="margin-top: 0; color: #7dd3fc; font-size: 1.25rem; font-family: var(--font-mono);">rbox init</h3>
+    <p style="font-size: 0.9rem; color: var(--text-secondary);">
+      Initializes a new encrypted vault or links an existing vault on a secondary machine. Prompts interactively for the vault passphrase.
+    </p>
+    <pre><code>rbox init [OPTIONS] --bucket &lt;BUCKET&gt;</code></pre>
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.825rem; margin-top: 1rem;">
+      <thead>
+        <tr style="text-align: left; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);">
+          <th style="padding: 0.5rem 0;">Flag</th>
+          <th style="padding: 0.5rem;">Description</th>
+          <th style="padding: 0.5rem;">Default</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--bucket &lt;NAME&gt;</td>
+          <td style="padding: 0.5rem;">Name of the target S3 bucket (Required)</td>
+          <td style="padding: 0.5rem; color: var(--text-muted);">-</td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--region &lt;REGION&gt;</td>
+          <td style="padding: 0.5rem;">S3 cloud region identifier</td>
+          <td style="padding: 0.5rem; color: var(--text-muted);">us-east-1</td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--endpoint-url &lt;URL&gt;</td>
+          <td style="padding: 0.5rem;">Custom S3 endpoint URL (for R2, B2, MinIO)</td>
+          <td style="padding: 0.5rem; color: var(--text-muted);">None (AWS standard)</td>
+        </tr>
+        <tr>
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--local-dir &lt;PATH&gt;</td>
+          <td style="padding: 0.5rem;">Local folder to synchronize</td>
+          <td style="padding: 0.5rem; color: var(--text-muted);">~/RenegadeBox</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glass-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+    <h3 style="margin-top: 0; color: #6ee7b7; font-size: 1.25rem; font-family: var(--font-mono);">rbox sync</h3>
+    <p style="font-size: 0.9rem; color: var(--text-secondary);">
+      Executes a single two-way synchronization cycle. Detects local file changes, uploads encrypted chunks, commits journal entries to S3, and pulls remote mutations.
+    </p>
+    <pre><code>rbox sync [OPTIONS]</code></pre>
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.825rem; margin-top: 1rem;">
+      <thead>
+        <tr style="text-align: left; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);">
+          <th style="padding: 0.5rem 0;">Flag</th>
+          <th style="padding: 0.5rem;">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--dry-run</td>
+          <td style="padding: 0.5rem;">Simulate sync and print planned chunk uploads without mutating local files or S3</td>
+        </tr>
+        <tr>
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--prune</td>
+          <td style="padding: 0.5rem;">Clean up unreferenced chunks in local cache</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glass-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+    <h3 style="margin-top: 0; color: #d8b4fe; font-size: 1.25rem; font-family: var(--font-mono);">rbox watch</h3>
+    <p style="font-size: 0.9rem; color: var(--text-secondary);">
+      Starts the long-running background watcher. Monitors the local sync directory for native file system events and maintains an active WebSocket link to the Hub for sub-second push notifications.
+    </p>
+    <pre><code>rbox watch [OPTIONS]</code></pre>
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.825rem; margin-top: 1rem;">
+      <thead>
+        <tr style="text-align: left; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);">
+          <th style="padding: 0.5rem 0;">Flag</th>
+          <th style="padding: 0.5rem;">Description</th>
+          <th style="padding: 0.5rem;">Default</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 0.5rem 0; font-family: var(--font-mono); color: #6ee7b7;">--debounce-ms &lt;MS&gt;</td>
+          <td style="padding: 0.5rem;">Delay in milliseconds to coalesce rapid file saves (e.g. text editor atomic writes)</td>
+          <td style="padding: 0.5rem; color: var(--text-muted);">500</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="glass-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+    <h3 style="margin-top: 0; color: #fde68a; font-size: 1.25rem; font-family: var(--font-mono);">rbox status</h3>
+    <p style="font-size: 0.9rem; color: var(--text-secondary);">
+      Prints the current operational status of the vault, including device ID, local path, journal sequence head, and Hub relay connectivity.
+    </p>
+    <pre><code>rbox status</code></pre>
+  </div>
+
+  <h2>Environment Variables</h2>
+  <ul>
+    <li><code>AWS_ACCESS_KEY_ID</code>: S3 access key credential.</li>
+    <li><code>AWS_SECRET_ACCESS_KEY</code>: S3 secret key credential.</li>
+    <li><code>AWS_REGION</code>: Default AWS / R2 / B2 storage region.</li>
+    <li><code>AWS_ENDPOINT_URL</code>: Custom S3 API endpoint.</li>
+    <li><code>RBOX_LOG</code>: Set logging level (<code>trace</code>, <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code>).</li>
+    <li><code>RBOX_CONFIG_DIR</code>: Override default config directory (defaults to <code>~/.config/renegadebox</code>).</li>
+  </ul>
+</DocsLayout>

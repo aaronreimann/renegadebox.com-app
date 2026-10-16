@@ -1,0 +1,60 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+
+<DocsLayout title="Documentation Overview" activeDoc="index">
+  <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.1); border: 1px solid var(--border-cyan); color: #7dd3fc; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+    RenegadeBox Technical Manual
+  </div>
+
+  <h1>RenegadeBox Documentation</h1>
+  <p style="font-size: 1.15rem; color: #cbd5e1; line-height: 1.7; margin-bottom: 2rem;">
+    RenegadeBox is an open-source, end-to-end encrypted file synchronization engine designed as a trustless, zero-knowledge alternative to proprietary services like Dropbox and Google Drive.
+  </p>
+
+  <div class="glass-card" style="padding: 1.5rem; border-left: 4px solid var(--accent-emerald); margin-bottom: 2.5rem; background: rgba(16, 185, 129, 0.05);">
+    <strong style="color: #6ee7b7; display: block; margin-bottom: 0.5rem; font-size: 0.95rem;">Zero Plaintext Leaks Guarantee:</strong>
+    <p style="margin: 0; font-size: 0.875rem; color: #94a3b8;">
+      Neither your storage provider (AWS, Cloudflare, Backblaze) nor the WebSocket Hub ever receives raw file contents, filenames, or directory trees. All data is sealed client-side with AES-256-GCM before transmission.
+    </p>
+  </div>
+
+  <h2>Documentation Sections</h2>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-top: 1.5rem; margin-bottom: 3rem;">
+    <a href="/docs/quickstart" class="glass-card glass-card-hover" style="padding: 1.5rem; display: block;">
+      <div style="font-size: 1.1rem; font-weight: 700; color: #7dd3fc; margin-bottom: 0.5rem;">Quickstart Guide →</div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+        From 0 to real-time syncing in 3 minutes. Install CLI, generate keys, and link your first folder.
+      </p>
+    </a>
+
+    <a href="/docs/architecture" class="glass-card glass-card-hover" style="padding: 1.5rem; display: block;">
+      <div style="font-size: 1.1rem; font-weight: 700; color: #6ee7b7; margin-bottom: 0.5rem;">Zero-Knowledge Architecture →</div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+        Cryptographic specifications, AEAD chunking, Argon2id key derivation, and append-only journals.
+      </p>
+    </a>
+
+    <a href="/docs/providers" class="glass-card glass-card-hover" style="padding: 1.5rem; display: block;">
+      <div style="font-size: 1.1rem; font-weight: 700; color: #d8b4fe; margin-bottom: 0.5rem;">Storage Providers →</div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+        Step-by-step IAM policies and configuration for Cloudflare R2, AWS S3, Backblaze B2, and MinIO.
+      </p>
+    </a>
+
+    <a href="/docs/cli" class="glass-card glass-card-hover" style="padding: 1.5rem; display: block;">
+      <div style="font-size: 1.1rem; font-weight: 700; color: #fde68a; margin-bottom: 0.5rem;">CLI Command Reference →</div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+        Comprehensive flag and parameter reference for rbox init, sync, watch, login, and status.
+      </p>
+    </a>
+  </div>
+
+  <h2>System Architecture Highlights</h2>
+  <ul>
+    <li><strong>Client-Side Rust Sync Engine:</strong> High-performance, memory-safe CLI binary built on Tokio with cross-platform native file notifications (`notify` crate).</li>
+    <li><strong>4MB AEAD Chunking &amp; Deduplication:</strong> Large files are split into deterministic 4MB content-addressed blobs encrypted with AES-256-GCM. Identical chunks across files are uploaded only once.</li>
+    <li><strong>Per-Device Append-Only Journals:</strong> Every device logs mutations as an immutable sequence in S3. There are no shared locks or database single points of failure.</li>
+    <li><strong>Lightweight Relay Hub:</strong> A zero-knowledge Bun + Postgres WebSocket relay that broadcasts sync notifications between paired devices in sub-second latency (&lt; 600ms).</li>
+  </ul>
+</DocsLayout>

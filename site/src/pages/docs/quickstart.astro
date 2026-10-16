@@ -1,0 +1,93 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+
+<DocsLayout title="Quickstart Guide" activeDoc="quickstart">
+  <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.1); border: 1px solid var(--border-cyan); color: #7dd3fc; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+    Setup in 3 Minutes
+  </div>
+
+  <h1>Quickstart Guide</h1>
+  <p style="font-size: 1.15rem; color: #cbd5e1; line-height: 1.7; margin-bottom: 2rem;">
+    This step-by-step walkthrough guides you through installing the RenegadeBox CLI, connecting your S3 bucket, creating your encrypted vault, and syncing files in real-time.
+  </p>
+
+  <h2>1. Prerequisites</h2>
+  <ul>
+    <li><strong>Operating System:</strong> macOS (Apple Silicon or Intel) or Linux (x86_64 or aarch64).</li>
+    <li><strong>S3 Storage:</strong> Any S3-compatible storage bucket (Cloudflare R2, AWS S3, Backblaze B2, or local MinIO/SeaweedFS).</li>
+    <li><strong>Rust Toolchain (Optional for source build):</strong> Rust 1.75+ with <code>cargo</code>.</li>
+  </ul>
+
+  <h2>2. Install the CLI</h2>
+  <p>To compile and install the <code>rbox</code> CLI directly from the source repository:</p>
+  <pre><code># Clone repository
+git clone https://github.com/aaronreimann/renegadebox.com-app.git
+cd renegadebox
+
+# Build and install engine binary into ~/.local/bin
+cargo install --path engine --root ~/.local
+
+# Verify installation
+rbox --version</code></pre>
+  <p>Make sure <code>~/.local/bin</code> is in your shell <code>$PATH</code> (in <code>~/.zshrc</code> or <code>~/.bashrc</code>).</p>
+
+  <h2>3. Configure Cloud Storage Credentials</h2>
+  <p>
+    RenegadeBox uses standard S3 environment variables or your existing <code>~/.aws/credentials</code> file. Set the following in your shell:
+  </p>
+  <pre><code>export AWS_ACCESS_KEY_ID="your-access-key-id"
+export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
+export AWS_REGION="auto" # or us-east-1</code></pre>
+
+  <h2>4. Initialize Your Encrypted Vault</h2>
+  <p>
+    Run <code>rbox init</code> to create the encryption keys and configure the local synchronized directory:
+  </p>
+  <pre><code># For Cloudflare R2:
+rbox init \
+  --bucket my-renegade-vault \
+  --region auto \
+  --endpoint-url https://&lt;account_id&gt;.r2.cloudflarestorage.com \
+  --local-dir ~/RenegadeBox
+
+# For AWS S3:
+rbox init \
+  --bucket my-renegade-vault \
+  --region us-east-1 \
+  --local-dir ~/RenegadeBox</code></pre>
+
+  <p>During initialization, you will be prompted to enter a vault passphrase:</p>
+  <ul>
+    <li>The CLI generates a cryptographically random 256-bit Master Key.</li>
+    <li>It derives an encryption key from your passphrase using <strong>Argon2id</strong> (m=64MB, t=3, p=4).</li>
+    <li>It seals the Master Key inside <code>rb/vault.json</code> in your S3 bucket.</li>
+    <li>The raw Master Key is saved into your operating system's native secure credential storage (macOS Keychain or Linux Secret Service).</li>
+  </ul>
+
+  <h2>5. Test File Synchronization</h2>
+  <p>Add a file to your local directory and run an on-demand sync cycle:</p>
+  <pre><code>echo "My confidential notes" &gt; ~/RenegadeBox/test-document.txt
+rbox sync</code></pre>
+  <p>
+    The sync engine detects the file, splits it into 4MB AEAD blocks, encrypts it with AES-256-GCM, uploads the ciphertext blob to S3, and appends a sealed entry to your device journal.
+  </p>
+
+  <h2>6. Pair a Second Machine</h2>
+  <p>
+    To sync files to your laptop or desktop, install <code>rbox</code> on the second machine and run <code>rbox init</code> pointing to the same S3 bucket:
+  </p>
+  <pre><code>rbox init --bucket my-renegade-vault --local-dir ~/RenegadeBox</code></pre>
+  <p>
+    When prompted, enter the <strong>same vault passphrase</strong> you created on device 1. RenegadeBox will download <code>rb/vault.json</code>, unwrap the Master Key, and pull all existing files down into <code>~/RenegadeBox</code>!
+  </p>
+
+  <h2>7. Real-Time Watch Mode</h2>
+  <p>
+    To keep folders synchronized automatically in the background without manually running <code>rbox sync</code>, start watch mode:
+  </p>
+  <pre><code>rbox watch</code></pre>
+  <p>
+    Watch mode monitors your folder with native OS file events and connects to the WebSocket Hub to propagate changes across all online devices in sub-second latency (&lt; 600ms).
+  </p>
+</DocsLayout>

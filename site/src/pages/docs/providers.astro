@@ -1,0 +1,121 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+---
+
+<DocsLayout title="Storage Provider Configuration" activeDoc="providers">
+  <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; border-radius: 9999px; background: rgba(56, 189, 248, 0.1); border: 1px solid var(--border-cyan); color: #7dd3fc; font-size: 0.75rem; font-weight: 600; margin-bottom: 1rem;">
+    BYOS Cloud Guides
+  </div>
+
+  <h1>Storage Provider Configuration</h1>
+  <p style="font-size: 1.15rem; color: #cbd5e1; line-height: 1.7; margin-bottom: 2rem;">
+    RenegadeBox works natively with any storage service supporting the AWS S3 API. Follow these setup guides to configure your preferred cloud provider.
+  </p>
+
+  <h2>1. Cloudflare R2 (Recommended)</h2>
+  <p>
+    Cloudflare R2 provides zero egress bandwidth fees, making it the most cost-effective provider for syncing active media, code repositories, and large files.
+  </p>
+
+  <h3>Step-by-Step Setup:</h3>
+  <ol>
+    <li>Log into the <a href="https://dash.cloudflare.com" target="_blank" style="color: #7dd3fc; text-decoration: underline;">Cloudflare Dashboard</a> and navigate to <strong>R2</strong>.</li>
+    <li>Click <strong>Create Bucket</strong>, choose a name (e.g. <code>my-renegade-vault</code>), and select <strong>Automatic</strong> location.</li>
+    <li>Click <strong>Manage R2 API Tokens</strong> &gt; <strong>Create API Token</strong>.</li>
+    <li>Set permissions to <strong>Object Read &amp; Write</strong> and restrict the scope to your newly created bucket.</li>
+    <li>Copy your <strong>Access Key ID</strong>, <strong>Secret Access Key</strong>, and <strong>Account ID</strong>.</li>
+  </ol>
+
+  <h3>CLI Initialization:</h3>
+  <pre><code>export AWS_ACCESS_KEY_ID="&lt;r2_access_key_id&gt;"
+export AWS_SECRET_ACCESS_KEY="&lt;r2_secret_access_key&gt;"
+export AWS_REGION="auto"
+
+rbox init \
+  --bucket my-renegade-vault \
+  --region auto \
+  --endpoint-url https://&lt;account_id&gt;.r2.cloudflarestorage.com \
+  --local-dir ~/RenegadeBox</code></pre>
+
+  <h2>2. Amazon Web Services (AWS S3)</h2>
+  <p>
+    AWS S3 is the industry standard for enterprise cloud storage with 99.999999999% (11 9's) durability guarantees.
+  </p>
+
+  <h3>Step-by-Step Setup:</h3>
+  <ol>
+    <li>Open the <a href="https://console.aws.amazon.com/s3/" target="_blank" style="color: #7dd3fc; text-decoration: underline;">AWS S3 Console</a> and click <strong>Create bucket</strong>.</li>
+    <li>Ensure <strong>Block all public access</strong> is strictly enabled (default).</li>
+    <li>Open the <a href="https://console.aws.amazon.com/iam/" target="_blank" style="color: #7dd3fc; text-decoration: underline;">IAM Console</a> and create a new IAM user (e.g. <code>renegadebox-cli</code>).</li>
+    <li>Attach the following minimal zero-trust policy (replace <code>my-renegade-vault</code> with your bucket name):</li>
+  </ol>
+
+  <pre><code>&#123;
+  "Version": "2012-10-17",
+  "Statement": [
+    &#123;
+      "Sid": "RenegadeBoxVaultPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-renegade-vault",
+        "arn:aws:s3:::my-renegade-vault/*"
+      ]
+    &#125;
+  ]
+&#125;</code></pre>
+
+  <h3>CLI Initialization:</h3>
+  <pre><code>export AWS_ACCESS_KEY_ID="&lt;aws_access_key_id&gt;"
+export AWS_SECRET_ACCESS_KEY="&lt;aws_secret_access_key&gt;"
+export AWS_REGION="us-east-1"
+
+rbox init \
+  --bucket my-renegade-vault \
+  --region us-east-1 \
+  --local-dir ~/RenegadeBox</code></pre>
+
+  <h2>3. Backblaze B2</h2>
+  <p>
+    Backblaze B2 offers the lowest cost per gigabyte ($0.006/GB/mo) for cloud storage, making it ideal for multi-terabyte personal archives.
+  </p>
+
+  <h3>Step-by-Step Setup:</h3>
+  <ol>
+    <li>Log into the <a href="https://secure.backblaze.com/b2_buckets.htm" target="_blank" style="color: #7dd3fc; text-decoration: underline;">Backblaze B2 Console</a>.</li>
+    <li>Click <strong>Create a Bucket</strong>, set privacy to <strong>Private</strong>.</li>
+    <li>Navigate to <strong>Application Keys</strong> &gt; <strong>Add a New Application Key</strong>.</li>
+    <li>Restrict the key to your bucket with <strong>Read and Write</strong> access.</li>
+    <li>Note your <strong>keyID</strong>, <strong>applicationKey</strong>, and S3 Endpoint (e.g. <code>s3.us-west-004.backblazeb2.com</code>).</li>
+  </ol>
+
+  <h3>CLI Initialization:</h3>
+  <pre><code>export AWS_ACCESS_KEY_ID="&lt;b2_key_id&gt;"
+export AWS_SECRET_ACCESS_KEY="&lt;b2_application_key&gt;"
+export AWS_REGION="us-west-004"
+
+rbox init \
+  --bucket my-renegade-vault \
+  --region us-west-004 \
+  --endpoint-url https://s3.us-west-004.backblazeb2.com \
+  --local-dir ~/RenegadeBox</code></pre>
+
+  <h2>4. Self-Hosted (SeaweedFS / MinIO)</h2>
+  <p>
+    For complete physical data sovereignty, you can point RenegadeBox to an on-premise SeaweedFS or MinIO instance running on a Raspberry Pi, NAS, or home server.
+  </p>
+  <pre><code>export AWS_ACCESS_KEY_ID="admin"
+export AWS_SECRET_ACCESS_KEY="password123"
+export AWS_REGION="us-east-1"
+
+rbox init \
+  --bucket my-nas-vault \
+  --region us-east-1 \
+  --endpoint-url http://192.168.1.100:8333 \
+  --local-dir ~/RenegadeBox</code></pre>
+</DocsLayout>
