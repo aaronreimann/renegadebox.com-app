@@ -514,22 +514,22 @@ async function handleSyncNow() {
   const activityTime = document.getElementById("activity-time");
   if (syncBtn) {
     syncBtn.disabled = true;
-    syncBtn.textContent = "Syncing...";
+    syncBtn.textContent = "⚔️ Hoisting...";
   }
   if (activityTitle)
-    activityTitle.textContent = "Sync cycle in progress...";
+    activityTitle.textContent = "⚔️ Hoisting booty to S3...";
   if (activityTime)
-    activityTime.textContent = "Scanning local changes -> pulling -> pushing";
+    activityTime.textContent = "Scanning local changes -> encrypting -> pushing";
   try {
     const result = await tauriInvoke("trigger_sync");
     if (activityTitle) {
-      activityTitle.textContent = result.success ? "Sync completed" : "Sync completed with warnings";
+      activityTitle.textContent = result.success ? "⚓ Booty stashed & synced" : "⚠️ Storm warning";
     }
     if (activityTime)
       activityTime.textContent = result.message;
   } catch (err) {
     if (activityTitle)
-      activityTitle.textContent = "Sync notice";
+      activityTitle.textContent = "⚠️ Sync notice";
     if (activityTime)
       activityTime.textContent = String(err);
   } finally {
@@ -627,16 +627,16 @@ async function setupAutoSyncEvents() {
       const activityTitle = document.getElementById("activity-title");
       const activityTime = document.getElementById("activity-time");
       if (activityTitle)
-        activityTitle.textContent = "Syncing in progress...";
+        activityTitle.textContent = "⚔️ Hoisting booty to S3...";
       if (activityTime)
-        activityTime.textContent = "Encrypting & synchronizing with S3 vault";
+        activityTime.textContent = "Encrypting & synchronizing with S3 pirate vault";
     });
     await listen2("sync-finished", async (event) => {
       console.log("[Tauri Event] sync-finished received:", event.payload);
       const activityTitle = document.getElementById("activity-title");
       const activityTime = document.getElementById("activity-time");
       if (activityTitle) {
-        activityTitle.textContent = event.payload.success ? "Sync completed" : "Sync notice";
+        activityTitle.textContent = event.payload.success ? "⚓ All booty stashed & synced" : "⚠️ Storm warning";
       }
       if (activityTime) {
         activityTime.textContent = event.payload.message;

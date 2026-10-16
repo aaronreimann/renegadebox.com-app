@@ -36,15 +36,15 @@
           </div>
         </div>
 
-        <!-- Account / Workspace Selector -->
-        <div class="sidebar-account" id="sidebar-account-btn">
-          <div class="avatar-badge">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-              <circle cx="12" cy="7" r="4"></circle>
-            </svg>
+        <!-- Account / Workspace Selector (Pirate Theme) -->
+        <div class="sidebar-account" id="sidebar-account-btn" title="RenegadeBox Pirate Vault">
+          <div class="avatar-badge" style="background: transparent; border: none; padding: 0;">
+            <img src="./pirate-icon.png" alt="Pirate Vault" style="width: 26px; height: 26px; border-radius: 6px; box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);" />
           </div>
-          <span class="account-label">RenegadeBox</span>
+          <div style="display: flex; flex-direction: column; overflow: hidden;">
+            <span class="account-label" style="display: flex; align-items: center; gap: 4px;">RenegadeBox <span style="font-size: 0.8rem;">🏴‍☠️</span></span>
+            <span style="font-size: 0.65rem; color: var(--accent-cyan); font-weight: 600; letter-spacing: 0.03em;">PIRATE VAULT</span>
+          </div>
         </div>
 
         <!-- Main Navigation Items -->
@@ -153,21 +153,29 @@
       </header>
 
       <!-- Scrollable Main View -->
-      <div class="content-scrollable">
-        <div class="page-title-row">
-          <h1 class="page-title">RenegadeBox</h1>
+        <div class="page-title-row" style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <h1 class="page-title">RenegadeBox</h1>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(56, 189, 248, 0.12); color: #0284c7; border: 1px solid rgba(56, 189, 248, 0.25); padding: 3px 10px; border-radius: 999px; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.02em;">
+              🏴‍☠️ Pirate Vault
+            </span>
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 500;">
+            Zero plaintext leaks &bull; BYOS S3
+          </div>
         </div>
         <div class="notes-hint">
-          Type notes, lists, to-dos, and links here <a href="#" id="hint-examples-link">Show examples</a>
+          Zero-Knowledge S3 Sync &bull; Files in <strong>~/RenegadeBox</strong> are encrypted with AES-256-GCM before sailing to S3.
         </div>
 
-        <!-- Dropbox Pinned Drag & Drop Area -->
+        <!-- Dropbox Pinned Drag & Drop Area (Pirate Theme) -->
         <div class="dropzone-banner" id="dropzone-box" title="Drop files here to encrypt and upload to S3">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
           </svg>
-          <span>Drag files and folders from below to mark as important</span>
+          <span>Drop booty or files into <strong>~/RenegadeBox</strong> &mdash; automatically encrypted and stashed in AWS S3</span>
         </div>
 
         <!-- Table Toolbar (Stats + Action Buttons) -->
@@ -346,6 +354,18 @@
       </div>
 
       <div class="modal-body">
+        <div style="display: flex; align-items: center; gap: 1rem; padding: 0.85rem; background: #0b1329; border-radius: 8px; margin-bottom: 1.25rem; border: 1px solid rgba(56, 189, 248, 0.25);">
+          <img src="./pirate-icon.png" alt="RenegadeBox Pirate Vault" style="width: 52px; height: 52px; border-radius: 12px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 12px rgba(56, 189, 248, 0.4);" />
+          <div>
+            <div style="font-weight: 700; color: #f8fafc; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+              RenegadeBox <span>🏴‍☠️</span>
+            </div>
+            <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 2px;">
+              Zero-Knowledge S3 Pirate Vault &bull; No middlemen, no NSA backdoor, no corporate overlords.
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
           <label>Local Sync Directory</label>
           <div id="cfg-folder" class="form-field-value">~/RenegadeBox</div>

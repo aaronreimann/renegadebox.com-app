@@ -18,35 +18,34 @@ pub fn run() {
                 commands::run_background_watcher(watcher_app, watcher_rx).await;
             });
 
-            // Build macOS Menu Bar Tray Menu
-            let open_i = MenuItem::with_id(app, "open", "Open RenegadeBox", true, None::<&str>)?;
-            let folder_i = MenuItem::with_id(app, "folder", "Open Sync Folder", true, None::<&str>)?;
+            // Build macOS Menu Bar Tray Menu (Pirate Theme)
+            let open_i = MenuItem::with_id(app, "open", "🏴‍☠️ Open RenegadeBox", true, None::<&str>)?;
+            let folder_i = MenuItem::with_id(app, "folder", "📂 Open Sync Folder (Booty)", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
-            let status_i = MenuItem::with_id(app, "status", "Status: Up to date", false, None::<&str>)?;
-            let sync_i = MenuItem::with_id(app, "sync", "Sync Now", true, None::<&str>)?;
+            let status_i = MenuItem::with_id(app, "status", "⚓ Status: Up to date (Shipshape)", false, None::<&str>)?;
+            let sync_i = MenuItem::with_id(app, "sync", "⚡ Sync Now (Hoist Booty)", true, None::<&str>)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
-            let dashboard_i = MenuItem::with_id(app, "dashboard", "Web Dashboard...", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit RenegadeBox", true, None::<&str>)?;
+            let dashboard_i = MenuItem::with_id(app, "dashboard", "🧭 Web Dashboard...", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit RenegadeBox (Abandon Ship)", true, None::<&str>)?;
 
             let status_item = status_i.clone();
             let status_item_start = status_i.clone();
             app.listen("sync-started", move |_| {
-                let _ = status_item_start.set_text("Status: Syncing changes...");
+                let _ = status_item_start.set_text("⚔️ Status: Hoisting booty to S3...");
             });
 
             app.listen("sync-finished", move |event| {
                 if let Ok(res) = serde_json::from_str::<commands::SyncResult>(event.payload()) {
                     let msg = if res.failed > 0 {
-                        format!("Status: Sync warning ({} failed)", res.failed)
+                        format!("⚠️ Status: Storm warning ({} failed)", res.failed)
                     } else if res.uploaded > 0 || res.downloaded > 0 {
-                        format!("Status: Synced (↑{} / ↓{})", res.uploaded, res.downloaded)
+                        format!("🏴‍☠️ Status: Booty stashed (↑{} / ↓{})", res.uploaded, res.downloaded)
                     } else {
-                        "Status: Up to date".to_string()
+                        "⚓ Status: Up to date (Shipshape)".to_string()
                     };
                     let _ = status_item.set_text(msg);
                 }
             });
-
 
             let menu = Menu::with_items(
                 app,
@@ -65,7 +64,7 @@ pub fn run() {
             let mut tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .tooltip("RenegadeBox - End-to-End Encrypted Sync")
+                .tooltip("RenegadeBox — Zero-Knowledge Pirate Vault")
                 .on_menu_event(|app, event| {
                     match event.id.as_ref() {
                         "open" => {
