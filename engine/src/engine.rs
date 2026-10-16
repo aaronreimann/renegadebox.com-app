@@ -38,13 +38,15 @@ pub struct SyncReport {
     pub renamed_local: usize,
     pub conflicts: usize,
     pub skipped_stale: usize,
+    /// Paths or journal entries that could not be processed this cycle (retried next cycle).
+    pub failed: usize,
 }
 
 impl std::fmt::Display for SyncReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "pushed: {} up, {} del, {} mv | pulled: {} down, {} del, {} mv | conflicts: {} | stale skipped: {}",
+            "pushed: {} up, {} del, {} mv | pulled: {} down, {} del, {} mv | conflicts: {} | stale skipped: {} | failed: {}",
             self.uploaded,
             self.deleted_remote,
             self.renamed_remote,
@@ -52,7 +54,8 @@ impl std::fmt::Display for SyncReport {
             self.deleted_local,
             self.renamed_local,
             self.conflicts,
-            self.skipped_stale
+            self.skipped_stale,
+            self.failed
         )
     }
 }
@@ -65,6 +68,8 @@ pub struct Engine {
     storage: Storage,
     root: PathBuf,
     report: SyncReport,
+    /// Allow a scan to treat every previously synced file as deleted (see `scan`).
+    pub allow_mass_delete: bool,
 }
 
 struct LocalStat {
@@ -121,7 +126,7 @@ impl Engine {
 
         let state = State::open(&profile.state_path())?;
         let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
-        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default() })
+        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false })
     }
 
     pub fn root(&self) -> &Path {
@@ -145,8 +150,18 @@ impl Engine {
     // ------------------------------------------------------------------ scan
 
     /// Record what is on disk. Unchanged files (same size + mtime) are not re-hashed.
+    ///
+    /// "Not seen" becomes a deletion that propagates to every device, so this is
+    /// deliberately conservative: anything under a directory that could not be read is
+    /// treated as still present, and a scan that would delete every synced file (an
+    /// unmounted drive, a revoked macOS folder permission) aborts unless
+    /// `allow_mass_delete` is set.
     pub fn scan(&mut self) -> Result<()> {
+        if !self.root.is_dir() {
+            bail!("sync folder {} is missing (unmounted drive?) — refusing to sync", self.root.display());
+        }
         let mut seen = std::collections::HashSet::new();
+        let mut unreadable: Vec<String> = Vec::new();
         let walker = WalkDir::new(&self.root).follow_links(false).into_iter().filter_entry(|e| {
             e.depth() == 0 || !paths::is_ignored(&e.file_name().to_string_lossy())
         });
@@ -154,7 +169,15 @@ impl Engine {
             let entry = match entry {
                 Ok(e) => e,
                 Err(e) => {
-                    warn!("scan: {e}");
+                    let rel = e.path().and_then(|p| paths::to_rel(&self.root, p));
+                    match rel {
+                        Some(rel) => {
+                            warn!("cannot read {rel}: {e} — its contents are left untouched");
+                            unreadable.push(rel);
+                        }
+                        None => bail!("cannot read sync folder {}: {e}", self.root.display()),
+                    }
+                    self.report.failed += 1;
                     continue;
                 }
             };
@@ -165,24 +188,50 @@ impl Engine {
                 warn!("skipping unrepresentable path {}", entry.path().display());
                 continue;
             };
+            // On filesystems that do not normalize Unicode (Linux), a name stored in NFD
+            // cannot be reached through its NFC form; say so instead of silently dropping it.
+            if paths::to_abs(&self.root, &rel).ok().and_then(|p| stat(&p)).is_none() {
+                warn!("skipping {}: its name is not in Unicode NFC form; rename it to sync it", entry.path().display());
+                continue;
+            }
             seen.insert(rel.clone());
             let mut row = self.state.get_or_new(&rel)?;
-            if self.refresh_local(&mut row)? {
-                self.state.put(&row)?;
+            match self.refresh_local(&mut row) {
+                Ok(true) => self.state.put(&row)?,
+                Ok(false) => {}
+                Err(e) => {
+                    warn!("{e:#}");
+                    self.report.failed += 1;
+                }
             }
         }
-        for mut row in self.state.all()? {
-            if row.local_hash.is_some() && !seen.contains(&row.path) {
-                row.local_hash = None;
-                row.local_size = None;
-                row.local_mtime_ns = None;
-                self.state.put(&row)?;
-            }
+        let protected = |path: &str| unreadable.iter().any(|u| path == u || path.starts_with(&format!("{u}/")));
+        let rows = self.state.all()?;
+        let synced = rows.iter().filter(|r| r.synced_hash.is_some()).count();
+        let vanished: Vec<FileRow> = rows
+            .into_iter()
+            .filter(|r| r.local_hash.is_some() && !seen.contains(&r.path) && !protected(&r.path))
+            .collect();
+        let vanished_synced = vanished.iter().filter(|r| r.synced_hash.is_some()).count();
+        if !self.allow_mass_delete && synced >= 10 && vanished_synced == synced {
+            bail!(
+                "every one of the {synced} synced files is missing from {}. Refusing to delete them on your other devices. \
+                 If you really emptied the folder, run `rbox sync --allow-mass-delete`.",
+                self.root.display()
+            );
+        }
+        for mut row in vanished {
+            row.local_hash = None;
+            row.local_size = None;
+            row.local_mtime_ns = None;
+            self.state.put(&row)?;
         }
         Ok(())
     }
 
     /// Re-observe one path on disk; returns true if the row changed.
+    /// Errors if the file exists but cannot be read: callers must not treat an unreadable
+    /// file as unchanged, or a remote update could overwrite an edit we failed to see.
     fn refresh_local(&self, row: &mut FileRow) -> Result<bool> {
         let abs = paths::to_abs(&self.root, &row.path)?;
         match stat(&abs) {
@@ -197,13 +246,7 @@ impl Engine {
                 if row.local_hash.is_some() && row.local_size == Some(st.size) && row.local_mtime_ns == Some(st.mtime_ns) {
                     return Ok(false);
                 }
-                let h = match crypto::hash_file(&abs) {
-                    Ok(h) => hex::encode(h),
-                    Err(e) => {
-                        warn!("could not read {}: {e}", row.path);
-                        return Ok(false);
-                    }
-                };
+                let h = hex::encode(crypto::hash_file(&abs).with_context(|| format!("cannot read {}", row.path))?);
                 row.local_hash = Some(h);
                 row.local_size = Some(st.size);
                 row.local_mtime_ns = Some(st.mtime_ns);
@@ -259,10 +302,56 @@ impl Engine {
             }
         }
         batch.sort_by(|a, b| a.order().cmp(&b.order()));
+        // A failed entry blocks only the rest of *its* device's journal (cursors must stay
+        // contiguous); other devices' entries still apply and push still runs. Skipping
+        // ahead on other devices is safe because max-order-wins does not depend on arrival order.
+        let mut blocked = std::collections::HashSet::new();
         for e in batch {
-            self.apply(&e).await.with_context(|| format!("applying {} {:?} {}", e.device_name, e.action, e.path))?;
+            if blocked.contains(&e.device_id) {
+                continue;
+            }
+            if let Err(err) = self.apply(&e).await {
+                warn!("could not apply {} {:?} {} (will retry): {err:#}", e.device_name, e.action, e.path);
+                self.report.failed += 1;
+                blocked.insert(e.device_id.clone());
+                continue;
+            }
             self.observe_lamport(e.lamport)?;
             self.state.set_cursor(&e.device_id, e.seq)?;
+        }
+        Ok(())
+    }
+
+    /// Make room for a file at `rel`: a local *file* where the remote tree has a directory
+    /// (or a local directory where it has a file) is moved aside as a conflicted copy.
+    fn clear_path_for_file(&mut self, rel: &str) -> Result<()> {
+        let segs: Vec<&str> = rel.split('/').collect();
+        for i in 1..segs.len() {
+            let anc = segs[..i].join("/");
+            let abs = paths::to_abs(&self.root, &anc)?;
+            if std::fs::symlink_metadata(&abs).map(|m| m.is_file()).unwrap_or(false) {
+                let mut row = self.state.get_or_new(&anc)?;
+                self.refresh_local(&mut row)?;
+                if let Some(local) = row.local_hash.clone() {
+                    self.move_to_conflict_copy(&mut row, &local)?;
+                    self.state.put(&row)?;
+                }
+            }
+        }
+        let abs = paths::to_abs(&self.root, rel)?;
+        if std::fs::symlink_metadata(&abs).map(|m| m.is_dir()).unwrap_or(false) {
+            let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+            let mut name = paths::conflict_name(rel, &self.cfg.device_name, &date, "folder");
+            let mut n = 2;
+            while paths::to_abs(&self.root, &name)?.exists() {
+                name = format!("{} {n}", paths::conflict_name(rel, &self.cfg.device_name, &date, "folder"));
+                n += 1;
+            }
+            // Files inside are rediscovered under the new name by the next scan and
+            // published as renames, so nothing is re-uploaded.
+            std::fs::rename(&abs, paths::to_abs(&self.root, &name)?).with_context(|| format!("move folder {rel} aside"))?;
+            info!("conflict: a remote file replaced folder {rel}; kept the folder as {name}");
+            self.report.conflicts += 1;
         }
         Ok(())
     }
@@ -348,6 +437,7 @@ impl Engine {
         if self.keys.blob_id(&plain_hash) != blob_id {
             bail!("blob id does not match content hash for {rel}");
         }
+        self.clear_path_for_file(rel)?;
         let abs = paths::to_abs(&self.root, rel)?;
         if let Some(parent) = abs.parent() {
             std::fs::create_dir_all(parent)?;
@@ -380,10 +470,15 @@ impl Engine {
                 self.move_to_conflict_copy(&mut row, &local)?;
             }
         }
-        std::fs::rename(&tmp_plain, &abs).with_context(|| format!("install {rel}"))?;
+        // Stat the temp file *before* installing it: rename preserves size and mtime, and a
+        // stat taken afterwards could capture a user edit made in between and mark it synced.
+        let st = stat(&tmp_plain);
+        if let Err(err) = std::fs::rename(&tmp_plain, &abs) {
+            let _ = std::fs::remove_file(&tmp_plain);
+            return Err(err).with_context(|| format!("install {rel}"));
+        }
         Self::set_head(&mut row, e, Some(hash));
         row.local_hash = Some(hash.to_string());
-        let st = stat(&abs);
         row.local_size = st.as_ref().map(|s| s.size);
         row.local_mtime_ns = st.as_ref().map(|s| s.mtime_ns);
         self.state.put(&row)?;
@@ -394,10 +489,20 @@ impl Engine {
     fn apply_delete(&mut self, rel: &str, e: &JournalEntry, base: Option<&str>) -> Result<()> {
         let Some(mut row) = self.prepare(rel, e, base, None)? else { return Ok(()) };
         if row.local_hash.is_some() {
-            let abs = paths::to_abs(&self.root, rel)?;
-            std::fs::remove_file(&abs).with_context(|| format!("delete {rel}"))?;
-            self.remove_empty_parents(&abs);
-            self.report.deleted_local += 1;
+            // Clobber check, as in apply_put: an edit made since `prepare` hashed the file
+            // is kept as a conflicted copy instead of being deleted.
+            let prepared = row.local_hash.clone();
+            self.refresh_local(&mut row)?;
+            match row.local_hash.clone() {
+                Some(now) if Some(&now) != prepared.as_ref() => self.move_to_conflict_copy(&mut row, &now)?,
+                Some(_) => {
+                    let abs = paths::to_abs(&self.root, rel)?;
+                    std::fs::remove_file(&abs).with_context(|| format!("delete {rel}"))?;
+                    self.remove_empty_parents(&abs);
+                    self.report.deleted_local += 1;
+                }
+                None => {}
+            }
         }
         Self::set_head(&mut row, e, None);
         row.local_hash = None;
@@ -419,11 +524,15 @@ impl Engine {
         if !clean_match || new_row.local_hash.is_some() || old_row.synced_hash.as_deref() != e.base_hash.as_deref() {
             return Ok(false);
         }
+        self.clear_path_for_file(&e.path)?;
         let from = paths::to_abs(&self.root, old)?;
         let to = paths::to_abs(&self.root, &e.path)?;
         if let Some(parent) = to.parent() {
             std::fs::create_dir_all(parent)?;
+            paths::to_abs(&self.root, &e.path)?;
         }
+        // Use the stat from refresh_local (taken before the move), not one taken after.
+        let (size, mtime) = (old_row.local_size, old_row.local_mtime_ns);
         std::fs::rename(&from, &to).with_context(|| format!("rename {old} -> {}", e.path))?;
         self.remove_empty_parents(&from);
         Self::set_head(&mut old_row, e, None);
@@ -432,9 +541,8 @@ impl Engine {
         old_row.local_mtime_ns = None;
         Self::set_head(&mut new_row, e, e.hash.as_deref());
         new_row.local_hash = e.hash.clone();
-        let st = stat(&to);
-        new_row.local_size = st.as_ref().map(|s| s.size);
-        new_row.local_mtime_ns = st.as_ref().map(|s| s.mtime_ns);
+        new_row.local_size = size;
+        new_row.local_mtime_ns = mtime;
         self.state.put(&old_row)?;
         self.state.put(&new_row)?;
         self.report.renamed_local += 1;
@@ -474,7 +582,8 @@ impl Engine {
                 if e.is::<IdentityCollision>() {
                     return Err(e);
                 }
-                warn!("could not publish {}: {e:#}", row.path);
+                warn!("could not publish {} (will retry): {e:#}", row.path);
+                self.report.failed += 1;
             }
         }
         Ok(())
@@ -491,6 +600,9 @@ impl Engine {
             }
             Some(_) => {
                 let abs = paths::to_abs(&self.root, &row.path)?;
+                // Stat *before* hashing: if the file changes afterwards its mtime will no
+                // longer match, so the next scan re-hashes it instead of trusting a stale hash.
+                let st = stat(&abs).ok_or_else(|| anyhow!("{} disappeared", row.path))?;
                 let tmp_enc = self.profile.tmp_dir().join(format!("{}.enc", uuid::Uuid::new_v4()));
                 let blob = crypto::encrypt_file(&self.keys, &abs, &tmp_enc);
                 let blob = match blob {
@@ -501,7 +613,6 @@ impl Engine {
                     }
                 };
                 let hash = hex::encode(blob.plain_hash);
-                let st = stat(&abs).ok_or_else(|| anyhow!("{} disappeared", row.path))?;
                 row.local_hash = Some(hash.clone());
                 row.local_size = Some(st.size);
                 row.local_mtime_ns = Some(st.mtime_ns);
@@ -564,7 +675,25 @@ impl Engine {
         mtime_ms: Option<i64>,
         blob_id: Option<String>,
     ) -> Result<JournalEntry> {
-        let seq = self.state.meta_u64("next_seq")?.max(1);
+        let mut seq = self.state.meta_u64("next_seq")?.max(1);
+        // Crash recovery: a previous run may have written this slot and died before
+        // recording it. If the object there is byte-identical to what we recorded as
+        // pending, it is ours — adopt it and move on. (The change it described is still
+        // dirty locally and gets re-published below; a duplicate entry is harmless.)
+        if let Some(pending) = self.state.meta("pending_append")?
+            && let Some((pseq, digest)) = pending.split_once(':')
+            && pseq.parse::<u64>().ok() == Some(seq)
+        {
+            let key = journal::journal_key(&self.cfg.device_id, seq);
+            if let Some(existing) = self.storage.get_bytes(&key).await?
+                && crypto::sha256_hex(&existing) == digest
+            {
+                info!("recovered journal slot {seq} written before an interrupted run");
+                self.state.set_cursor(&self.cfg.device_id, seq)?;
+                seq += 1;
+                self.state.set_meta("next_seq", &seq.to_string())?;
+            }
+        }
         let entry = JournalEntry {
             v: 1,
             device_id: self.cfg.device_id.clone(),
@@ -583,9 +712,18 @@ impl Engine {
         entry.validate()?;
         let key = entry.object_key();
         let sealed = self.keys.seal(&serde_json::to_vec(&entry)?, &key)?;
+        let digest = crypto::sha256_hex(&sealed);
+        self.state.set_meta("pending_append", &format!("{seq}:{digest}"))?;
         match self.storage.put_bytes_if_absent(&key, sealed).await {
             Ok(()) => {}
-            Err(PutIfAbsentError::Exists) => return Err(IdentityCollision(key).into()),
+            Err(PutIfAbsentError::Exists) => {
+                // The SDK retries a PUT whose response was lost; the retry then sees our own
+                // committed object. Only a *different* object means another device holds this id.
+                let existing = self.storage.get_bytes(&key).await?;
+                if existing.as_deref().map(crypto::sha256_hex).as_deref() != Some(digest.as_str()) {
+                    return Err(IdentityCollision(key).into());
+                }
+            }
             Err(PutIfAbsentError::Other(e)) => return Err(e),
         }
         self.state.set_meta("next_seq", &(seq + 1).to_string())?;

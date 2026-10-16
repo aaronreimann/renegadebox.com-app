@@ -45,7 +45,11 @@ enum Cmd {
         force: bool,
     },
     /// Run one sync cycle and exit.
-    Sync,
+    Sync {
+        /// Allow publishing deletions when every synced file has disappeared locally.
+        #[arg(long)]
+        allow_mass_delete: bool,
+    },
     /// Keep syncing: react to local changes and poll for remote ones.
     Watch {
         #[arg(long, default_value_t = 15)]
@@ -87,6 +91,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("RBOX_LOG").unwrap_or_else(|_| "info,aws=warn".into()))
         .with_target(false)
+        .with_writer(std::io::stderr)
         .init();
     let cli = Cli::parse();
     let profile = Profile::locate()?;
@@ -142,10 +147,15 @@ async fn main() -> Result<()> {
                 println!("Keep your passphrase safe: without it, no new device can read your files.");
             }
         }
-        Cmd::Sync => {
+        Cmd::Sync { allow_mass_delete } => {
             let mut e = Engine::open(profile).await?;
+            e.allow_mass_delete = allow_mass_delete;
             let r = e.sync_once().await?;
             println!("{r}");
+            if r.failed > 0 {
+                eprintln!("{} item(s) could not be synced and will be retried; see warnings above", r.failed);
+                std::process::exit(2);
+            }
         }
         Cmd::Watch { poll_secs } => {
             let mut e = Engine::open(profile).await?;

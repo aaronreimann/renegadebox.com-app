@@ -207,8 +207,41 @@ check("ISC-59 watch loop is quiescent (no echo loop)", (await journalCount()) ==
 watcher.kill("SIGINT");
 await watcher.exited;
 
+// --- regression (review #2): an unreadable folder must not turn into remote deletes
+const rboxRaw = (d: string, ...args: string[]) => $`${BIN} ${args}`.env(env(d)).nothrow().quiet();
+write("a", "Private/one.txt", "one");
+write("a", "Private/two.txt", "two");
+await rbox("a", "sync");
+await rbox("b", "sync");
+await $`chmod 000 ${join(box("a"), "Private")}`;
+const locked = await rboxRaw("a", "sync");
+await $`chmod 755 ${join(box("a"), "Private")}`;
+await rbox("b", "sync");
+check("Review#2 unreadable folder: sync reports failure", locked.exitCode === 2, locked.stdout.toString().trim());
+check("Review#2 unreadable folder: no remote deletes", existsSync(join(box("b"), "Private/one.txt")) && existsSync(join(box("b"), "Private/two.txt")));
+
+// --- regression (review #2): an emptied sync folder (unmounted drive) must not wipe other devices
+const aside = join(T, "aside");
+mkdirSync(aside);
+for (const name of readdirSync(box("a"))) renameSync(join(box("a"), name), join(aside, name));
+const emptied = await rboxRaw("a", "sync");
+check("Review#2 mass-delete guard refuses", emptied.exitCode !== 0 && emptied.stderr.toString().includes("Refusing to delete"));
+for (const name of readdirSync(aside)) renameSync(join(aside, name), join(box("a"), name));
+await rbox("b", "sync");
+check("Review#2 mass-delete guard: other device untouched", sameTree("a", "b"));
+
+// --- regression (review #3): file on one device vs folder of the same name on another
+write("b", "Reports", "a plain file called Reports");
+write("a", "Reports/q1.txt", "q1 numbers");
+await rbox("a", "sync");
+const collide = await rboxRaw("b", "sync");
+for (let round = 0; round < 2; round++) for (const d of ["a", "b"]) await rbox(d, "sync");
+check("Review#3 file-vs-folder: sync does not stall", collide.exitCode === 0, collide.stderr.toString().split("\n")[0] ?? "");
+check("Review#3 file-vs-folder: both contents survive and converge",
+  sameTree("a", "b") && contents("a").has(hashOf("a plain file called Reports")) && read("a", "Reports/q1.txt") === "q1 numbers");
+
 // --- leak probe: nothing in the bucket may contain a plaintext name or content
-const names = ["finances", "Documents", "Taxes", "receipt", "holiday", "Lisbon", "notes", "plan", "watched", "Laptop", "Desktop", "Q3 numbers", "coffee"];
+const names = ["Private", "Reports", "finances", "Documents", "Taxes", "receipt", "holiday", "Lisbon", "notes", "plan", "watched", "Laptop", "Desktop", "Q3 numbers", "coffee"];
 const objects = await listAll("");
 let leaks: string[] = [];
 for (const o of objects) {

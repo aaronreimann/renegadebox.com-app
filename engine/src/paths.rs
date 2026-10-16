@@ -31,6 +31,10 @@ pub fn validate_rel(rel: &str) -> Result<()> {
             bail!("invalid sync path segment in {rel:?}");
         }
     }
+    // Every device stores NFC; anything else would alias an existing path on macOS.
+    if !unicode_normalization::is_nfc(rel) {
+        bail!("sync path {rel:?} is not NFC-normalized");
+    }
     Ok(())
 }
 
@@ -96,7 +100,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_escapes() {
-        for bad in ["", "/etc/passwd", "../x", "a/../b", "a//b", "a/./b", "a\\b"] {
+        for bad in ["", "/etc/passwd", "../x", "a/../b", "a//b", "a/./b", "a\\b", "cafe\u{301}.txt", "a\nb"] {
             assert!(validate_rel(bad).is_err(), "{bad}");
         }
         assert!(validate_rel("Documents/finances.pdf").is_ok());

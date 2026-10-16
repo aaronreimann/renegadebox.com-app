@@ -65,6 +65,10 @@ rb/journal/<device-uuid>/<seq:020>    sealed journal entries, written with If-No
 
 **Accepted leakage.** Someone who can read the bucket learns object sizes (roughly file sizes), how many files there are, when edits happen, which device made each change, and that two files share content (only within your own bucket). File names, folder structure and contents stay hidden.
 
+**Threat model limits.** Whoever controls the bucket cannot read or forge anything, but they *can* withhold or roll back objects. That means hiding a device's newest journal entries, serving an older vault, or deleting data. The engine detects a replaced vault (via the pin) and journal gaps (it waits instead of skipping), but it can't prove that it has seen *every* entry. Signed per-device journal heads would close this, and they're future work. Deleting your data is always possible for the bucket owner; that's what backups or S3 versioning are for.
+
+**Blob garbage collection** is deliberately not implemented yet. Deleting a blob races with conflicted copies and renames that still reference it, and it destroys the history that future version-recovery needs. Blobs are only ever added in Phase 1.
+
 ## Journal entries
 
 Schema: `protocol/schemas/journal-entry.schema.json`. The plaintext exists only on devices.
