@@ -94,4 +94,22 @@ describe("RenegadeBox Desktop GUI Application", () => {
     expect(existsSync(icnsPath)).toBe(true);
     expect(existsSync(pngPath)).toBe(true);
   });
+
+  it("has native auto-sync watcher and debouncer integration", () => {
+    const commandsPath = join(DESKTOP_DIR, "src-tauri/src/commands.rs");
+    const libPath = join(DESKTOP_DIR, "src-tauri/src/lib.rs");
+    const mainTsPath = join(DESKTOP_DIR, "src/main.ts");
+
+    const commands = readFileSync(commandsPath, "utf-8");
+    const lib = readFileSync(libPath, "utf-8");
+    const mainTs = readFileSync(mainTsPath, "utf-8");
+
+    expect(commands).toContain("run_background_watcher");
+    expect(commands).toContain("notify_debouncer_full::new_debouncer");
+    expect(lib).toContain("WatcherHandle");
+    expect(lib).toContain("run_background_watcher");
+    expect(mainTs).toContain("vault-changed");
+    expect(mainTs).toContain("sync-finished");
+  });
 });
+

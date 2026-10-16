@@ -1,3 +1,19 @@
+var __defProp = Object.defineProperty;
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
+}
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, {
+      get: all[name],
+      enumerable: true,
+      configurable: true,
+      set: __exportSetter.bind(all, name)
+    });
+};
+var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
+
 // node_modules/@tauri-apps/api/external/tslib/tslib.es6.js
 function __classPrivateFieldGet(receiver, state, kind, f) {
   if (kind === "a" && !f)
@@ -15,102 +31,169 @@ function __classPrivateFieldSet(receiver, state, value, kind, f) {
     throw new TypeError("Cannot write private member to an object whose class did not declare it");
   return kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value), value;
 }
+var init_tslib_es6 = () => {};
 
 // node_modules/@tauri-apps/api/core.js
-var _Channel_instances;
-var _Channel_onmessage;
-var _Channel_nextMessageIndex;
-var _Channel_pendingMessages;
-var _Channel_messageEndIndex;
-var _Channel_deliver;
-var _Resource_rid;
-var SERIALIZE_TO_IPC_FN = "__TAURI_TO_IPC_KEY__";
 function transformCallback(callback, once = false) {
   return window.__TAURI_INTERNALS__.transformCallback(callback, once);
-}
-
-class Channel {
-  constructor(onmessage) {
-    _Channel_instances.add(this);
-    _Channel_onmessage.set(this, undefined);
-    _Channel_nextMessageIndex.set(this, 0);
-    _Channel_pendingMessages.set(this, []);
-    _Channel_messageEndIndex.set(this, undefined);
-    __classPrivateFieldSet(this, _Channel_onmessage, onmessage || (() => {}), "f");
-    this.id = transformCallback((rawMessage) => {
-      const index = rawMessage.index;
-      if ("end" in rawMessage) {
-        if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
-          this.cleanupCallback();
-        } else {
-          __classPrivateFieldSet(this, _Channel_messageEndIndex, index, "f");
-        }
-        return;
-      }
-      const message = rawMessage.message;
-      if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
-        __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message);
-        __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
-        while (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") in __classPrivateFieldGet(this, _Channel_pendingMessages, "f")) {
-          const message2 = __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
-          __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message2);
-          delete __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
-          __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
-        }
-        if (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") === __classPrivateFieldGet(this, _Channel_messageEndIndex, "f")) {
-          this.cleanupCallback();
-        }
-      } else {
-        __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[index] = message;
-      }
-    });
-  }
-  cleanupCallback() {
-    window.__TAURI_INTERNALS__.unregisterCallback(this.id);
-  }
-  set onmessage(handler) {
-    __classPrivateFieldSet(this, _Channel_onmessage, handler, "f");
-  }
-  get onmessage() {
-    return __classPrivateFieldGet(this, _Channel_onmessage, "f");
-  }
-  [(_Channel_onmessage = new WeakMap, _Channel_nextMessageIndex = new WeakMap, _Channel_pendingMessages = new WeakMap, _Channel_messageEndIndex = new WeakMap, _Channel_instances = new WeakSet, _Channel_deliver = function _Channel_deliver2(message) {
-    try {
-      __classPrivateFieldGet(this, _Channel_onmessage, "f").call(this, message);
-    } catch (error) {
-      queueMicrotask(() => {
-        throw error;
-      });
-    }
-  }, SERIALIZE_TO_IPC_FN)]() {
-    return `__CHANNEL__:${this.id}`;
-  }
-  toJSON() {
-    return this[SERIALIZE_TO_IPC_FN]();
-  }
 }
 async function invoke(cmd, args = {}, options) {
   return window.__TAURI_INTERNALS__.invoke(cmd, args, options);
 }
-class Resource {
-  get rid() {
-    return __classPrivateFieldGet(this, _Resource_rid, "f");
-  }
-  constructor(rid) {
-    _Resource_rid.set(this, undefined);
-    __classPrivateFieldSet(this, _Resource_rid, rid, "f");
-  }
-  async close() {
-    return invoke("plugin:resources|close", {
-      rid: this.rid
-    });
-  }
-  async[(_Resource_rid = new WeakMap, Symbol.asyncDispose)]() {
-    await this.close();
-  }
+var _Channel_instances, _Channel_onmessage, _Channel_nextMessageIndex, _Channel_pendingMessages, _Channel_messageEndIndex, _Channel_deliver, _Resource_rid, SERIALIZE_TO_IPC_FN = "__TAURI_TO_IPC_KEY__", Channel, Resource;
+var init_core = __esm(() => {
+  init_tslib_es6();
+  Channel = class Channel {
+    constructor(onmessage) {
+      _Channel_instances.add(this);
+      _Channel_onmessage.set(this, undefined);
+      _Channel_nextMessageIndex.set(this, 0);
+      _Channel_pendingMessages.set(this, []);
+      _Channel_messageEndIndex.set(this, undefined);
+      __classPrivateFieldSet(this, _Channel_onmessage, onmessage || (() => {}), "f");
+      this.id = transformCallback((rawMessage) => {
+        const index = rawMessage.index;
+        if ("end" in rawMessage) {
+          if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
+            this.cleanupCallback();
+          } else {
+            __classPrivateFieldSet(this, _Channel_messageEndIndex, index, "f");
+          }
+          return;
+        }
+        const message = rawMessage.message;
+        if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
+          __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message);
+          __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
+          while (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") in __classPrivateFieldGet(this, _Channel_pendingMessages, "f")) {
+            const message2 = __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
+            __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message2);
+            delete __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
+            __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
+          }
+          if (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") === __classPrivateFieldGet(this, _Channel_messageEndIndex, "f")) {
+            this.cleanupCallback();
+          }
+        } else {
+          __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[index] = message;
+        }
+      });
+    }
+    cleanupCallback() {
+      window.__TAURI_INTERNALS__.unregisterCallback(this.id);
+    }
+    set onmessage(handler) {
+      __classPrivateFieldSet(this, _Channel_onmessage, handler, "f");
+    }
+    get onmessage() {
+      return __classPrivateFieldGet(this, _Channel_onmessage, "f");
+    }
+    [(_Channel_onmessage = new WeakMap, _Channel_nextMessageIndex = new WeakMap, _Channel_pendingMessages = new WeakMap, _Channel_messageEndIndex = new WeakMap, _Channel_instances = new WeakSet, _Channel_deliver = function _Channel_deliver2(message) {
+      try {
+        __classPrivateFieldGet(this, _Channel_onmessage, "f").call(this, message);
+      } catch (error) {
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }, SERIALIZE_TO_IPC_FN)]() {
+      return `__CHANNEL__:${this.id}`;
+    }
+    toJSON() {
+      return this[SERIALIZE_TO_IPC_FN]();
+    }
+  };
+  Resource = class Resource {
+    get rid() {
+      return __classPrivateFieldGet(this, _Resource_rid, "f");
+    }
+    constructor(rid) {
+      _Resource_rid.set(this, undefined);
+      __classPrivateFieldSet(this, _Resource_rid, rid, "f");
+    }
+    async close() {
+      return invoke("plugin:resources|close", {
+        rid: this.rid
+      });
+    }
+    async[(_Resource_rid = new WeakMap, Symbol.asyncDispose)]() {
+      await this.close();
+    }
+  };
+});
+
+// node_modules/@tauri-apps/api/event.js
+var exports_event = {};
+__export(exports_event, {
+  once: () => once,
+  listen: () => listen,
+  emitTo: () => emitTo,
+  emit: () => emit,
+  TauriEvent: () => TauriEvent
+});
+async function _unlisten(event, eventId) {
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, eventId);
+  await invoke("plugin:event|unlisten", {
+    event,
+    eventId
+  });
 }
+async function listen(event, handler, options) {
+  var _a;
+  const target = typeof (options === null || options === undefined ? undefined : options.target) === "string" ? { kind: "AnyLabel", label: options.target } : (_a = options === null || options === undefined ? undefined : options.target) !== null && _a !== undefined ? _a : { kind: "Any" };
+  return invoke("plugin:event|listen", {
+    event,
+    target,
+    handler: transformCallback(handler)
+  }).then((eventId) => {
+    return async () => _unlisten(event, eventId);
+  });
+}
+async function once(event, handler, options) {
+  return listen(event, (eventData) => {
+    _unlisten(event, eventData.id);
+    handler(eventData);
+  }, options);
+}
+async function emit(event, payload) {
+  await invoke("plugin:event|emit", {
+    event,
+    payload
+  });
+}
+async function emitTo(target, event, payload) {
+  const eventTarget = typeof target === "string" ? { kind: "AnyLabel", label: target } : target;
+  await invoke("plugin:event|emit_to", {
+    target: eventTarget,
+    event,
+    payload
+  });
+}
+var TauriEvent;
+var init_event = __esm(() => {
+  init_core();
+  (function(TauriEvent2) {
+    TauriEvent2["WINDOW_RESIZED"] = "tauri://resize";
+    TauriEvent2["WINDOW_MOVED"] = "tauri://move";
+    TauriEvent2["WINDOW_CLOSE_REQUESTED"] = "tauri://close-requested";
+    TauriEvent2["WINDOW_DESTROYED"] = "tauri://destroyed";
+    TauriEvent2["WINDOW_FOCUS"] = "tauri://focus";
+    TauriEvent2["WINDOW_BLUR"] = "tauri://blur";
+    TauriEvent2["WINDOW_SCALE_FACTOR_CHANGED"] = "tauri://scale-change";
+    TauriEvent2["WINDOW_THEME_CHANGED"] = "tauri://theme-changed";
+    TauriEvent2["WINDOW_CREATED"] = "tauri://window-created";
+    TauriEvent2["WINDOW_SUSPENDED"] = "tauri://suspended";
+    TauriEvent2["WINDOW_RESUMED"] = "tauri://resumed";
+    TauriEvent2["WEBVIEW_CREATED"] = "tauri://webview-created";
+    TauriEvent2["DRAG_ENTER"] = "tauri://drag-enter";
+    TauriEvent2["DRAG_OVER"] = "tauri://drag-over";
+    TauriEvent2["DRAG_DROP"] = "tauri://drag-drop";
+    TauriEvent2["DRAG_LEAVE"] = "tauri://drag-leave";
+  })(TauriEvent || (TauriEvent = {}));
+});
 
 // src/main.ts
+init_core();
 async function tauriInvoke(cmd, args) {
   const hasTauri = typeof window !== "undefined" && (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__));
   if (hasTauri) {
@@ -523,9 +606,39 @@ function initDesktopApp() {
   }
   refreshVaultStatus();
   refreshFilesList();
+  setupAutoSyncEvents();
   setInterval(() => {
     refreshVaultStatus();
-  }, 4000);
+  }, 5000);
+}
+async function setupAutoSyncEvents() {
+  const hasTauri = typeof window !== "undefined" && (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__));
+  if (!hasTauri)
+    return;
+  try {
+    const { listen: listen2 } = await Promise.resolve().then(() => (init_event(), exports_event));
+    await listen2("vault-changed", async () => {
+      console.log("[Tauri Event] vault-changed detected, refreshing UI...");
+      await refreshVaultStatus();
+      await refreshFilesList();
+    });
+    await listen2("sync-finished", async (event) => {
+      console.log("[Tauri Event] sync-finished received:", event.payload);
+      const activityTitle = document.getElementById("activity-title");
+      const activityTime = document.getElementById("activity-time");
+      if (activityTitle) {
+        activityTitle.textContent = event.payload.success ? "Sync completed" : "Sync notice";
+      }
+      if (activityTime) {
+        activityTime.textContent = event.payload.message;
+      }
+      await refreshVaultStatus();
+      await refreshFilesList();
+    });
+    console.log("[RenegadeBox] Auto-sync event listeners registered.");
+  } catch (err) {
+    console.warn("[RenegadeBox] Could not attach auto-sync event listeners:", err);
+  }
 }
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initDesktopApp);

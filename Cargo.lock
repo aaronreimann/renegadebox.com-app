@@ -3920,6 +3920,8 @@ name = "renegadebox-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "notify",
+ "notify-debouncer-full",
  "renegadebox-engine",
  "serde",
  "serde_json",

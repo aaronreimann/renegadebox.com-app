@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, State as TauriState};
 
 use renegadebox_engine::config::Profile;
 use renegadebox_engine::engine::Engine;
@@ -36,6 +37,132 @@ pub struct SyncResult {
     pub downloaded: usize,
     pub conflicts: usize,
     pub failed: usize,
+}
+
+pub enum SyncRequest {
+    Trigger(Option<tokio::sync::oneshot::Sender<SyncResult>>),
+}
+
+#[derive(Clone)]
+pub struct WatcherHandle {
+    pub tx: tokio::sync::mpsc::UnboundedSender<SyncRequest>,
+}
+
+pub async fn run_background_watcher(
+    app: AppHandle,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<SyncRequest>,
+) {
+    loop {
+        let profile = match Profile::locate() {
+            Ok(p) => p,
+            Err(_) => {
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                continue;
+            }
+        };
+
+        if !profile.config_path().exists() {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            continue;
+        }
+
+        let mut engine = match Engine::open(profile.clone()).await {
+            Ok(e) => e,
+            Err(err) => {
+                eprintln!("[Watcher] Failed to open engine: {err:#}");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        let (fs_tx, mut fs_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let mut debouncer = match notify_debouncer_full::new_debouncer(
+            std::time::Duration::from_millis(500),
+            None,
+            move |res: notify_debouncer_full::DebounceEventResult| {
+                if res.is_ok() {
+                    let _ = fs_tx.send(());
+                }
+            },
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("[Watcher] Debouncer initialization error: {e:#}");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        if let Err(e) = debouncer.watch(engine.root(), notify::RecursiveMode::Recursive) {
+            eprintln!("[Watcher] Failed to watch {}: {e:#}", engine.root().display());
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            continue;
+        }
+
+        eprintln!("[Watcher] Native FSEvents auto-sync active on {}", engine.root().display());
+        let _ = app.emit("vault-changed", ());
+
+        let mut poll_interval = tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            let mut manual_reply = None;
+            tokio::select! {
+                _ = poll_interval.tick() => {}
+                Some(()) = fs_rx.recv() => {
+                    // Drain any queued events to coalesce bursts
+                    while fs_rx.try_recv().is_ok() {}
+                }
+                Some(req) = rx.recv() => {
+                    match req {
+                        SyncRequest::Trigger(reply) => {
+                            manual_reply = reply;
+                        }
+                    }
+                }
+            }
+
+            match engine.sync_once().await {
+                Ok(report) => {
+                    let result = SyncResult {
+                        success: report.failed == 0,
+                        message: format!("{report}"),
+                        uploaded: report.uploaded,
+                        downloaded: report.downloaded,
+                        conflicts: report.conflicts,
+                        failed: report.failed,
+                    };
+                    if let Some(reply) = manual_reply {
+                        let _ = reply.send(result.clone());
+                    }
+                    if report.uploaded > 0
+                        || report.downloaded > 0
+                        || report.conflicts > 0
+                        || report.renamed_local > 0
+                        || report.renamed_remote > 0
+                    {
+                        eprintln!("[Watcher] Auto-synced changes: {report}");
+                        let _ = app.emit("vault-changed", ());
+                        let _ = app.emit("sync-finished", result);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[Watcher] Auto-sync cycle warning: {e:#}");
+                    if let Some(reply) = manual_reply {
+                        let _ = reply.send(SyncResult {
+                            success: false,
+                            message: format!("Sync error: {e:#}"),
+                            uploaded: 0,
+                            downloaded: 0,
+                            conflicts: 0,
+                            failed: 1,
+                        });
+                    }
+                }
+            }
+
+            // Drain any fs notifications provoked by our own downloads/writes
+            while fs_rx.try_recv().is_ok() {}
+        }
+    }
 }
 
 #[tauri::command]
@@ -103,23 +230,18 @@ pub async fn get_vault_status() -> Result<VaultStatus, String> {
 }
 
 #[tauri::command]
-pub async fn trigger_sync() -> Result<SyncResult, String> {
-    let profile = Profile::locate().map_err(|e| e.to_string())?;
-    if !profile.config_path().exists() {
-        return Err("Vault is not initialized. Run rbox init first.".to_string());
+pub async fn trigger_sync(state: TauriState<'_, WatcherHandle>) -> Result<SyncResult, String> {
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    state
+        .tx
+        .send(SyncRequest::Trigger(Some(reply_tx)))
+        .map_err(|e| format!("Failed to send trigger to watcher: {e}"))?;
+
+    match tokio::time::timeout(std::time::Duration::from_secs(30), reply_rx).await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(_)) => Err("Watcher channel closed without response".to_string()),
+        Err(_) => Err("Sync timed out after 30 seconds".to_string()),
     }
-
-    let mut engine = Engine::open(profile).await.map_err(|e| e.to_string())?;
-    let report = engine.sync_once().await.map_err(|e| e.to_string())?;
-
-    Ok(SyncResult {
-        success: report.failed == 0,
-        message: format!("{}", report),
-        uploaded: report.uploaded,
-        downloaded: report.downloaded,
-        conflicts: report.conflicts,
-        failed: report.failed,
-    })
 }
 
 #[tauri::command]

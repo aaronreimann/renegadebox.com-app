@@ -494,9 +494,44 @@ export function initDesktopApp() {
   // Initial load
   refreshVaultStatus();
   refreshFilesList();
+  setupAutoSyncEvents();
   setInterval(() => {
     refreshVaultStatus();
-  }, 4000);
+  }, 5000);
+}
+
+async function setupAutoSyncEvents() {
+  const hasTauri = typeof window !== "undefined" && (
+    Boolean(window.__TAURI_INTERNALS__) ||
+    Boolean(window.__TAURI__)
+  );
+  if (!hasTauri) return;
+
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    await listen("vault-changed", async () => {
+      console.log("[Tauri Event] vault-changed detected, refreshing UI...");
+      await refreshVaultStatus();
+      await refreshFilesList();
+    });
+
+    await listen<SyncResult>("sync-finished", async (event) => {
+      console.log("[Tauri Event] sync-finished received:", event.payload);
+      const activityTitle = document.getElementById("activity-title");
+      const activityTime = document.getElementById("activity-time");
+      if (activityTitle) {
+        activityTitle.textContent = event.payload.success ? "Sync completed" : "Sync notice";
+      }
+      if (activityTime) {
+        activityTime.textContent = event.payload.message;
+      }
+      await refreshVaultStatus();
+      await refreshFilesList();
+    });
+    console.log("[RenegadeBox] Auto-sync event listeners registered.");
+  } catch (err) {
+    console.warn("[RenegadeBox] Could not attach auto-sync event listeners:", err);
+  }
 }
 
 if (document.readyState === "loading") {
@@ -504,3 +539,4 @@ if (document.readyState === "loading") {
 } else {
   initDesktopApp();
 }
+

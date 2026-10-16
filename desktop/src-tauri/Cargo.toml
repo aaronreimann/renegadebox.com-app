@@ -20,3 +20,5 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 thiserror = "2"
 renegadebox-engine = { path = "../../engine" }
+notify = "8.2.0"
+notify-debouncer-full = "0.7.0"
