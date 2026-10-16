@@ -1,27 +1,34 @@
-// RenegadeBox desktop UI. One page, three views chosen by ?view=:
-//   popover (default) - the small window under the menu-bar icon
-//   settings          - opened on demand from the popover or tray menu
-//   setup             - first run, or "Reconnect…" in Settings
-// Without Tauri (a normal browser) it runs on sample data; see lib/ipc.ts.
+// RenegadeBox desktop UI.
 import { invoke, hasTauri, MOCK_SCENARIOS, mockScenarioFromUrl, type MockScenario } from "./lib/ipc";
-import { renderPopover, renderConflictList, renderSettings, renderPopoverSettings, renderSetup, type SettingsModel } from "./lib/views";
+import {
+  renderPopover,
+  renderConflictList,
+  renderSettings,
+  renderPopoverSettings,
+  renderSetup,
+  renderDesktopApp,
+  type SettingsModel,
+  type DesktopTab,
+} from "./lib/views";
 import { friendlyError, type Overview } from "./lib/status";
 import { changeKeyStore, keyStoreKind, resolveConflict } from "./lib/actions";
 import { PROVIDERS, SETUP_STEPS, MIN_PASSPHRASE, validateSetupStep, setupErrorStep, type ProviderId, type SetupValues } from "./lib/setup";
+import { getTheme, setTheme, applyTheme, type Theme } from "./lib/theme";
 import type { AiConfigResponse, ConflictItem, MountedVolume, NasTaxonomyScan, RecentFile, Resolution, RouteDecision, VaultStatus } from "./lib/types";
 
-type View = "popover" | "settings" | "setup";
+type View = "desktop" | "popover" | "settings" | "setup";
 
 function currentView(): View {
   const v = new URLSearchParams(location.search).get("view") ?? location.hash.replace("#", "");
-  return v === "settings" || v === "setup" ? v : "popover";
+  if (v === "settings" || v === "setup" || v === "popover") return v;
+  return "desktop";
 }
 
 const root = () => document.getElementById("app")!;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
 const errText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : String(e));
 
-async function onBackendEvents(names: string[], handler: () => void) {
+async function onBackendEvents(names: string[], handler: (event?: any) => void) {
   if (!hasTauri()) return;
   try {
     const { listen } = await import("@tauri-apps/api/event");
@@ -285,6 +292,21 @@ function bindSettings(status: VaultStatus, aiConfig?: AiConfigResponse) {
     } catch {
       input.checked = !input.checked;
     }
+  });
+
+  // Theme selector in settings
+  document.querySelectorAll<HTMLButtonElement>("#general-theme-switcher .theme-btn").forEach((btn) => {
+    const t = btn.dataset.theme as Theme;
+    if (t === getTheme()) btn.classList.add("active");
+    btn.addEventListener("click", () => {
+      const chosen = btn.dataset.theme as Theme;
+      if (chosen) {
+        setTheme(chosen);
+        document.querySelectorAll<HTMLButtonElement>(".theme-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.theme === chosen);
+        });
+      }
+    });
   });
 
   $("ignored-save")!.addEventListener("click", async () => {
@@ -630,6 +652,205 @@ function initSetup() {
   show(1);
 }
 
+// ---------------------------------------------------------------- desktop app
+
+const desktop = {
+  activeTab: "files" as DesktopTab,
+  overview: null as Overview | null,
+  recent: [] as RecentFile[],
+  conflicts: [] as ConflictItem[],
+  settingsModel: null as SettingsModel | null,
+  aiConfig: undefined as AiConfigResponse | undefined,
+  theme: getTheme(),
+  busy: false,
+};
+
+async function refreshDesktop() {
+  try {
+    const [overview, recent, status, autostart, ignored, aiConfig] = await Promise.all([
+      invoke<Overview>("get_sync_overview"),
+      invoke<RecentFile[]>("list_recent_files", { limit: 25 }),
+      invoke<VaultStatus>("get_vault_status"),
+      invoke<boolean>("is_autostart_enabled").catch(() => false),
+      invoke<string[]>("get_ignored_patterns").catch(() => [] as string[]),
+      invoke<AiConfigResponse>("get_ai_config").catch(() => undefined),
+    ]);
+    desktop.overview = overview;
+    desktop.recent = recent;
+    desktop.settingsModel = { status, autostart, ignored };
+    desktop.aiConfig = aiConfig;
+    desktop.conflicts = overview.conflicts > 0 || desktop.activeTab === "conflicts" ? await invoke<ConflictItem[]>("list_conflicts") : [];
+  } catch (err) {
+    desktop.overview = { initialized: true, paused: false, syncing: false, pending: 0, conflicts: 0, error: errText(err) };
+    if (!desktop.settingsModel) {
+      desktop.settingsModel = {
+        status: {
+          initialized: true,
+          folder: "~/RenegadeBox",
+          bucket: "renegadebox-vault",
+          region: "us-east-1",
+          endpoint: null,
+          device_id: null,
+          device_name: "Mac",
+          hub_url: null,
+          key_store: "System keychain",
+          total_files: 0,
+          pending_changes: 0,
+          total_bytes: 0,
+        },
+        autostart: false,
+        ignored: [".DS_Store"],
+      };
+    }
+  }
+  desktop.theme = getTheme();
+  renderDesktopView();
+}
+
+function renderDesktopView() {
+  if (!desktop.overview || !desktop.settingsModel) return;
+  root().innerHTML = renderDesktopApp({
+    activeTab: desktop.activeTab,
+    overview: desktop.overview,
+    recent: desktop.recent,
+    conflicts: desktop.conflicts,
+    settings: desktop.settingsModel,
+    theme: desktop.theme,
+    now: Date.now(),
+  });
+  bindDesktopEvents();
+}
+
+function bindDesktopEvents() {
+  if (!desktop.settingsModel) return;
+
+  // Sidebar navigation tabs
+  document.querySelectorAll<HTMLButtonElement>("[data-desktop-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.desktopTab as DesktopTab;
+      if (tab && desktop.activeTab !== tab) {
+        desktop.activeTab = tab;
+        renderDesktopView();
+      }
+    });
+  });
+
+  // Theme switchers (sidebar footer & General settings)
+  document.querySelectorAll<HTMLButtonElement>(".theme-btn").forEach((btn) => {
+    const t = btn.dataset.theme as Theme;
+    if (t === desktop.theme) btn.classList.add("active");
+    btn.addEventListener("click", () => {
+      const chosen = btn.dataset.theme as Theme;
+      if (chosen) {
+        setTheme(chosen);
+        desktop.theme = chosen;
+        document.querySelectorAll<HTMLButtonElement>(".theme-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.theme === chosen);
+        });
+      }
+    });
+  });
+
+  // Folder actions
+  $("sidebar-folder-btn")?.addEventListener("click", () => void invoke("open_sync_folder"));
+  $("open-folder-btn")?.addEventListener("click", () => void invoke("open_sync_folder"));
+  $("start-setup-btn")?.addEventListener("click", () => void invoke("open_setup"));
+
+  // Pause actions
+  const togglePause = async () => {
+    if (!desktop.overview || desktop.busy) return;
+    desktop.busy = true;
+    try {
+      if (desktop.overview.paused) {
+        await invoke("resume_sync");
+      } else {
+        await invoke("pause_sync");
+      }
+      await refreshDesktop();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      desktop.busy = false;
+    }
+  };
+  $("sidebar-pause-btn")?.addEventListener("click", togglePause);
+  $("pause-btn")?.addEventListener("click", togglePause);
+
+  // File open & reveal
+  document.querySelectorAll<HTMLButtonElement>("[data-action='open']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.index);
+      const f = desktop.recent[idx];
+      if (f) void invoke("open_file", { path: f.path });
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-action='reveal']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.index);
+      const f = desktop.recent[idx];
+      if (f) void invoke("reveal_in_finder", { path: f.path });
+    });
+  });
+
+  // Conflict resolutions
+  document.querySelectorAll<HTMLButtonElement>("[data-resolution]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const idx = Number(btn.dataset.index);
+      const item = desktop.conflicts[idx];
+      if (!item || desktop.busy) return;
+      desktop.busy = true;
+      btn.closest(".conflict")?.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      await resolveConflict(invoke, item, btn.dataset.resolution as Resolution);
+      desktop.busy = false;
+      await refreshDesktop();
+    });
+  });
+
+  // If on settings or routing tab, bind the settings form & sub-tabs
+  if (desktop.activeTab === "settings" || desktop.activeTab === "routing") {
+    bindSettings(desktop.settingsModel.status, desktop.aiConfig);
+
+    // Sub-tab switching inside settings
+    document.querySelectorAll<HTMLButtonElement>(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.querySelector(`[data-panel="${tab}"]`)?.classList.add("active");
+      });
+    });
+  }
+}
+
+function initDesktop() {
+  document.title = "RenegadeBox";
+  applyTheme();
+  void refreshDesktop();
+  void onBackendEvents(
+    ["vault-changed", "sync-started", "sync-finished", "status-changed", "sync-paused", "sync-resumed"],
+    () => void refreshDesktop(),
+  );
+  void onBackendEvents(["navigate-tab"], (event: any) => {
+    const tab = (event?.payload ?? event) as DesktopTab;
+    if (tab && ["files", "conflicts", "routing", "settings"].includes(tab)) {
+      desktop.activeTab = tab;
+      renderDesktopView();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+      e.preventDefault();
+      desktop.activeTab = "settings";
+      renderDesktopView();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+      e.preventDefault();
+      void invoke("open_sync_folder");
+    }
+  });
+}
+
 // ---------------------------------------------------------------- browser preview
 
 function mountPreviewBar(view: View, scenario: MockScenario) {
@@ -647,20 +868,30 @@ function mountPreviewBar(view: View, scenario: MockScenario) {
   bar.className = "preview-bar";
   bar.innerHTML =
     `<span class="preview-label">Preview</span>` +
-    MOCK_SCENARIOS.map((s) => link(`?view=popover&state=${s}`, labels[s], view === "popover" && scenario === s)).join("") +
+    link("?view=desktop", "Desktop Window", view === "desktop") +
+    MOCK_SCENARIOS.map((s) => link(`?view=desktop&state=${s}`, labels[s], view === "desktop" && scenario === s)).join("") +
     link("?view=settings", "Settings", view === "settings") +
     link("?view=setup", "Setup", view === "setup");
   document.body.prepend(bar);
 }
 
 function init() {
+  applyTheme();
   const view = currentView();
   document.body.classList.add(`view-${view}`);
   if (!hasTauri()) mountPreviewBar(view, mockScenarioFromUrl());
-  if (view === "settings") initSettings();
-  else if (view === "setup") initSetup();
-  else initPopover();
+  if (view === "settings") {
+    desktop.activeTab = "settings";
+    initDesktop();
+  } else if (view === "setup") {
+    initSetup();
+  } else if (view === "popover") {
+    initPopover();
+  } else {
+    initDesktop();
+  }
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
 else init();
+

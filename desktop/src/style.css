@@ -1,11 +1,14 @@
 /* RenegadeBox: quiet menu-bar app. System font, neutral palette, light + dark. */
 
-:root {
+:root, :root[data-theme="light"] {
   --font: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
   --bg: #ffffff;
   --bg-subtle: #f5f5f7;
   --bg-hover: #ececef;
+  --bg-active: #e2e2e7;
+  --sidebar-bg: #f7f7f9;
   --border: #e3e3e8;
+  --border-subtle: #eeeff2;
   --text: #1d1d1f;
   --text-muted: #6e6e73;
   --accent: #2f6bdb;
@@ -16,15 +19,18 @@
   --danger: #c4322b;
   --radius: 8px;
   --focus: 0 0 0 3px rgba(47, 107, 219, 0.3);
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1e1e20;
     --bg-subtle: #28282b;
     --bg-hover: #323236;
+    --bg-active: #3c3c42;
+    --sidebar-bg: #18181a;
     --border: #3a3a3e;
+    --border-subtle: #2c2c30;
     --text: #f2f2f4;
     --text-muted: #9a9aa1;
     --accent: #4d8bf5;
@@ -33,7 +39,27 @@
     --warn-bg: #3a2e18;
     --danger: #ff6b61;
     --focus: 0 0 0 3px rgba(77, 139, 245, 0.4);
+    color-scheme: dark;
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #1e1e20;
+  --bg-subtle: #28282b;
+  --bg-hover: #323236;
+  --bg-active: #3c3c42;
+  --sidebar-bg: #18181a;
+  --border: #3a3a3e;
+  --border-subtle: #2c2c30;
+  --text: #f2f2f4;
+  --text-muted: #9a9aa1;
+  --accent: #4d8bf5;
+  --ok: #4cc28a;
+  --warn: #f0a83a;
+  --warn-bg: #3a2e18;
+  --danger: #ff6b61;
+  --focus: 0 0 0 3px rgba(77, 139, 245, 0.4);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -706,6 +732,360 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
 .done-icon { display: inline-flex; color: var(--ok); margin-bottom: 8px; }
 
 .setup-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 14px; }
+
+/* ---------- Wide Two-Column Desktop App Layout ---------- */
+
+.desktop-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.desktop-sidebar {
+  width: 250px;
+  min-width: 250px;
+  flex: 0 0 250px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 18px 14px 14px;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.desktop-sidebar-top {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 4px;
+}
+
+.brand-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.brand-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.sidebar-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.sidebar-status-pill.status-ok { color: var(--ok); border-color: rgba(46, 139, 87, 0.25); }
+.sidebar-status-pill.status-syncing { color: var(--accent); border-color: rgba(47, 107, 219, 0.25); }
+.sidebar-status-pill.status-paused { color: var(--warn); border-color: rgba(178, 106, 0, 0.25); }
+.sidebar-status-pill.status-attention { color: var(--danger); border-color: rgba(196, 50, 43, 0.25); }
+.sidebar-status-pill.status-error { color: var(--danger); border-color: rgba(196, 50, 43, 0.25); }
+.sidebar-status-pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Nav */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--bg-hover);
+}
+
+.sidebar-nav-item.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.sidebar-nav-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sidebar-badge.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Sidebar Footer */
+.desktop-sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.storage-card {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.storage-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.storage-card-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-quick-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-quick-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  cursor: pointer;
+}
+.sidebar-quick-btn:hover {
+  background: var(--bg-hover);
+}
+
+/* Theme Switcher Segmented Control */
+.theme-switcher {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.theme-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.theme-btn:hover {
+  color: var(--text);
+}
+
+.theme-btn.active {
+  background: var(--bg-hover);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* ---------- Desktop Main View Area ---------- */
+
+.desktop-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.desktop-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 28px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg);
+}
+
+.desktop-title-area {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.desktop-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.desktop-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.desktop-content-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 28px 40px;
+}
+
+/* Wide File Table */
+.file-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.file-table th {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.file-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.file-table-row {
+  transition: background 0.12s ease;
+}
+
+.file-table-row:hover {
+  background: var(--bg-hover);
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.file-meta-folder {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.file-meta-time {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.file-actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Wide Settings Form Container */
+.desktop-settings-container {
+  max-width: 680px;
+}
+
+.desktop-settings-container .settings-window-header {
+  margin-bottom: 16px;
+}
 
 /* ---------- browser preview only (no Tauri) ---------- */
 

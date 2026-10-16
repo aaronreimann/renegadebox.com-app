@@ -221,27 +221,29 @@ export function renderPopoverSettings({ status, autostart, ignored }: SettingsMo
     </section>`;
 }
 
-export function renderSettings({ status, autostart, ignored }: SettingsModel): string {
+export function renderSettings({ status, autostart, ignored }: SettingsModel, initialTab: string = "general"): string {
   const kind = keyStoreKind(status.key_store);
   const row = (label: string, value: string) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
   const folder = status.folder ?? "Not set up";
   const totalSize = status.total_bytes ? ` · ${formatBytes(status.total_bytes)}` : "";
   const filesCount = status.total_files ? `${status.total_files} files${totalSize}` : "No files synced yet";
 
+  const isTab = (t: string) => initialTab === t;
+
   return `
     <main class="settings">
       <header class="settings-window-header">
         <h1 class="window-title">Settings</h1>
         <nav class="settings-tabs" role="tablist">
-          <button class="tab-btn active" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
-          <button class="tab-btn" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
-          <button class="tab-btn" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
-          <button class="tab-btn" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
-          <button class="tab-btn" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>Smart Routing</span></button>
+          <button class="tab-btn${isTab("general") ? " active" : ""}" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
+          <button class="tab-btn${isTab("storage") ? " active" : ""}" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
+          <button class="tab-btn${isTab("security") ? " active" : ""}" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
+          <button class="tab-btn${isTab("ignored") ? " active" : ""}" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
+          <button class="tab-btn${isTab("ai") ? " active" : ""}" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>Smart Routing</span></button>
         </nav>
       </header>
 
-      <div id="tab-panel-general" class="tab-panel active" data-panel="general">
+      <div id="tab-panel-general" class="tab-panel${isTab("general") ? " active" : ""}" data-panel="general">
         <section class="group">
           <h2 class="group-title">This Mac</h2>
           <label class="field">
@@ -277,10 +279,25 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
             </span>
             <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
           </label>
+          <div class="field" style="margin-top: 14px;">
+            <span class="field-label">Appearance</span>
+            <span class="field-hint">Choose whether RenegadeBox uses light, dark, or system appearance.</span>
+            <div class="theme-switcher" style="margin-top: 6px; max-width: 280px;" id="general-theme-switcher" role="radiogroup" aria-label="Appearance Theme">
+              <button class="theme-btn" data-theme="system" type="button" title="Match macOS system settings">
+                ${icons.monitor(14)}<span>System</span>
+              </button>
+              <button class="theme-btn" data-theme="light" type="button" title="Light theme">
+                ${icons.sun(14)}<span>Light</span>
+              </button>
+              <button class="theme-btn" data-theme="dark" type="button" title="Dark theme">
+                ${icons.moon(14)}<span>Dark</span>
+              </button>
+            </div>
+          </div>
         </section>
       </div>
 
-      <div id="tab-panel-storage" class="tab-panel" data-panel="storage">
+      <div id="tab-panel-storage" class="tab-panel${isTab("storage") ? " active" : ""}" data-panel="storage">
         <section class="group">
           <h2 class="group-title">Storage</h2>
           ${row("Provider", esc(providerLabel(status.endpoint)))}
@@ -294,7 +311,7 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
         </section>
       </div>
 
-      <div id="tab-panel-security" class="tab-panel" data-panel="security">
+      <div id="tab-panel-security" class="tab-panel${isTab("security") ? " active" : ""}" data-panel="security">
         <section class="group">
           <h2 class="group-title">Key storage</h2>
           <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
@@ -323,7 +340,7 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
         </section>
       </div>
 
-      <div id="tab-panel-ignored" class="tab-panel" data-panel="ignored">
+      <div id="tab-panel-ignored" class="tab-panel${isTab("ignored") ? " active" : ""}" data-panel="ignored">
         <section class="group">
           <h2 class="group-title">Ignored files</h2>
           <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
@@ -335,7 +352,7 @@ export function renderSettings({ status, autostart, ignored }: SettingsModel): s
         </section>
       </div>
 
-      <div id="tab-panel-ai" class="tab-panel" data-panel="ai">
+      <div id="tab-panel-ai" class="tab-panel${isTab("ai") ? " active" : ""}" data-panel="ai">
         <!-- Master Feature Card -->
         <div class="feature-hero-card">
           <div class="feature-hero-content">
@@ -554,3 +571,241 @@ export function renderSetup(): string {
       </form>
     </main>`;
 }
+
+export type DesktopTab = "files" | "conflicts" | "routing" | "settings";
+
+export interface DesktopAppModel {
+  activeTab: DesktopTab;
+  overview: Overview;
+  recent: RecentFile[];
+  conflicts: ConflictItem[];
+  settings: SettingsModel;
+  theme: "system" | "light" | "dark";
+  now: number;
+}
+
+export function renderDesktopApp({ activeTab, overview, recent, conflicts, settings, theme, now }: DesktopAppModel): string {
+  const st = describeStatus(overview);
+  const pauseLabel = overview.paused ? "Resume" : "Pause";
+  const totalSize = settings.status.total_bytes ? ` · ${formatBytes(settings.status.total_bytes)}` : "";
+  const filesCount = settings.status.total_files ? `${settings.status.total_files} files${totalSize}` : "No files synced yet";
+
+  const statusClass = `status-${st.kind}`;
+
+  const navItems: { id: DesktopTab; label: string; icon: string; count?: number; isDanger?: boolean }[] = [
+    { id: "files", label: "Recent Files", icon: icons.doc(16), count: recent.length > 0 ? recent.length : undefined },
+    { id: "conflicts", label: "Activity & Conflicts", icon: icons.sync(16), count: conflicts.length > 0 ? conflicts.length : undefined, isDanger: conflicts.length > 0 },
+    { id: "routing", label: "Smart Routing", icon: icons.sparkles(16) },
+    { id: "settings", label: "Settings", icon: icons.gear(16) },
+  ];
+
+  const navHtml = navItems
+    .map(
+      (item) => `
+    <button class="sidebar-nav-item${activeTab === item.id ? " active" : ""}" type="button" data-desktop-tab="${item.id}" id="nav-tab-${item.id}">
+      <span class="sidebar-nav-content">
+        ${item.icon}
+        <span>${esc(item.label)}</span>
+      </span>
+      ${item.count !== undefined ? `<span class="sidebar-badge${item.isDanger ? " danger" : ""}">${item.count}</span>` : ""}
+    </button>`,
+    )
+    .join("");
+
+  let mainContent = "";
+
+  if (activeTab === "files") {
+    let body = "";
+    if (!overview.initialized) {
+      body = `
+        <div class="empty">
+          <p>RenegadeBox keeps a folder on this Mac in sync with storage you own.</p>
+          <button id="start-setup-btn" class="btn primary" type="button">Set up RenegadeBox…</button>
+        </div>`;
+    } else if (recent.length === 0) {
+      body = `<div class="empty"><p>Files you add to your RenegadeBox folder will show up here.</p></div>`;
+    } else {
+      const rows = recent
+        .map((f, i) => {
+          const where = f.folder ? f.folder.split("/").pop()! : "RenegadeBox";
+          return `
+          <tr class="file-table-row" data-index="${i}">
+            <td>
+              <div class="file-name-cell">
+                <span class="file-icon">${fileIcon(f.name)}</span>
+                <span title="${esc(f.name)}">${esc(f.name)}</span>
+              </div>
+            </td>
+            <td><span class="file-meta-folder">${esc(where)}</span></td>
+            <td><span class="file-meta-time">${esc(relativeTime(f.modified_ms, now))}</span></td>
+            <td>
+              <div class="file-actions-cell">
+                <button class="btn" type="button" data-action="open" data-index="${i}">Open</button>
+                <button class="btn" type="button" data-action="reveal" data-index="${i}">Show in Finder</button>
+              </div>
+            </td>
+          </tr>`;
+        })
+        .join("");
+
+      body = `
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Location</th>
+              <th>Modified</th>
+              <th style="text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>`;
+    }
+
+    mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Recent Files</h1>
+          <p class="desktop-subtitle">Files synchronized on this Mac</p>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="open-folder-btn" class="btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
+          <button id="pause-btn" class="btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        ${body}
+      </div>`;
+  } else if (activeTab === "conflicts") {
+    let body = "";
+    if (conflicts.length === 0) {
+      body = `
+        <div class="empty">
+          <span class="done-icon" style="color:var(--ok);">${icons.check(32)}</span>
+          <p style="margin-top:10px; font-weight:500;">All files are synchronized. Nothing needs your attention.</p>
+        </div>`;
+    } else {
+      const rows = conflicts
+        .map((c, i) => {
+          const who = c.device ? esc(c.device) : "Another device";
+          const where = c.folder ? ` in ${esc(c.folder.split("/").pop()!)}` : "";
+          const other = c.device ? `Use ${esc(c.device)}’s version` : "Use the other version";
+          return `
+          <li class="conflict" data-index="${i}">
+            <div class="conflict-head">
+              <span class="file-icon">${fileIcon(c.original_name)}</span>
+              <span class="recent-text">
+                <span class="recent-name">${esc(c.original_name)}</span>
+                <span class="recent-meta">${who} saved a different version${where} · ${esc(relativeTime(c.modified_ms, now))}</span>
+              </span>
+            </div>
+            <div class="conflict-actions">
+              <button class="btn primary" type="button" data-index="${i}" data-resolution="keep_both" title="Keep both files side by side">Keep both</button>
+              <button class="btn" type="button" data-index="${i}" data-resolution="keep_conflicted">${other}</button>
+              <button class="btn" type="button" data-index="${i}" data-resolution="keep_local">Keep current</button>
+            </div>
+          </li>`;
+        })
+        .join("");
+
+      body = `
+        <p class="explain">These files were changed in two places at once. RenegadeBox kept both versions so nothing was lost. Choose what to keep.</p>
+        <ul class="conflict-list">${rows}</ul>`;
+    }
+
+    mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Activity & Conflicts</h1>
+          <p class="desktop-subtitle">Review sync conflicts and choose resolutions</p>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        ${body}
+      </div>`;
+  } else if (activeTab === "routing") {
+    mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Smart Routing</h1>
+          <p class="desktop-subtitle">Synology NAS volume detection and AI-assisted file categorization</p>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        <div class="desktop-settings-container">
+          ${renderSettings(settings, "ai")}
+        </div>
+      </div>`;
+  } else if (activeTab === "settings") {
+    mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Settings</h1>
+          <p class="desktop-subtitle">Preferences, storage, security, and smart routing</p>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        <div class="desktop-settings-container">
+          ${renderSettings(settings, "general")}
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="desktop-layout">
+      <aside class="desktop-sidebar">
+        <div class="desktop-sidebar-top">
+          <div class="brand-header">
+            <div class="brand-info">
+              <span class="brand-icon">${icons.box(18)}</span>
+              <span class="brand-title">RenegadeBox</span>
+            </div>
+            <div class="sidebar-status-pill ${statusClass}" title="${esc(st.title)}${st.detail ? ` - ${esc(st.detail)}` : ""}">
+              <span class="dot"></span>
+              <span>${esc(st.title)}</span>
+            </div>
+          </div>
+          <nav class="sidebar-nav">
+            ${navHtml}
+          </nav>
+        </div>
+
+        <div class="desktop-sidebar-bottom">
+          <div class="storage-card">
+            <div class="storage-card-header">
+              <span>Vault Storage</span>
+              <span>${esc(providerLabel(settings.status.endpoint))}</span>
+            </div>
+            <div class="storage-card-val" title="${esc(filesCount)}">${esc(filesCount)}</div>
+            <div class="sidebar-quick-actions">
+              <button id="sidebar-folder-btn" class="sidebar-quick-btn" type="button" title="Open RenegadeBox folder in Finder">
+                ${icons.folder(12)}<span>Folder</span>
+              </button>
+              <button id="sidebar-pause-btn" class="sidebar-quick-btn" type="button" aria-pressed="${overview.paused}" title="${pauseLabel} syncing">
+                ${overview.paused ? icons.play(12) : icons.pause(12)}<span>${pauseLabel}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="theme-switcher" id="sidebar-theme-switcher" role="radiogroup" aria-label="Appearance Theme">
+            <button class="theme-btn${theme === "system" ? " active" : ""}" data-theme="system" type="button" title="System theme">
+              ${icons.monitor(12)}<span>Auto</span>
+            </button>
+            <button class="theme-btn${theme === "light" ? " active" : ""}" data-theme="light" type="button" title="Light theme">
+              ${icons.sun(12)}<span>Light</span>
+            </button>
+            <button class="theme-btn${theme === "dark" ? " active" : ""}" data-theme="dark" type="button" title="Dark theme">
+              ${icons.moon(12)}<span>Dark</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="desktop-main">
+        ${mainContent}
+      </main>
+    </div>`;
+}
+

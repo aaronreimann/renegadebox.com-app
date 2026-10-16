@@ -442,7 +442,10 @@ Photos and media go to Media/Photos`,
     chevron: (s) => svg('<path d="m9 18 6-6-6-6"/>', s),
     lock: (s) => svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>', s),
     external: (s) => svg('<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>', s),
-    sparkles: (s) => svg('<path d="m12 3 1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/>', s)
+    sparkles: (s) => svg('<path d="m12 3 1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3z"/>', s),
+    sun: (s) => svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>', s),
+    moon: (s) => svg('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>', s),
+    monitor: (s) => svg('<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>', s)
   };
   function fileIcon(name) {
     const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
@@ -800,26 +803,27 @@ Photos and media go to Media/Photos`,
       </div>
     </section>`;
   }
-  function renderSettings({ status, autostart, ignored }) {
+  function renderSettings({ status, autostart, ignored }, initialTab = "general") {
     const kind = keyStoreKind(status.key_store);
     const row = (label, value) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
     const folder = status.folder ?? "Not set up";
     const totalSize = status.total_bytes ? ` · ${formatBytes(status.total_bytes)}` : "";
     const filesCount = status.total_files ? `${status.total_files} files${totalSize}` : "No files synced yet";
+    const isTab = (t) => initialTab === t;
     return `
     <main class="settings">
       <header class="settings-window-header">
         <h1 class="window-title">Settings</h1>
         <nav class="settings-tabs" role="tablist">
-          <button class="tab-btn active" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
-          <button class="tab-btn" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
-          <button class="tab-btn" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
-          <button class="tab-btn" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
-          <button class="tab-btn" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>Smart Routing</span></button>
+          <button class="tab-btn${isTab("general") ? " active" : ""}" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
+          <button class="tab-btn${isTab("storage") ? " active" : ""}" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
+          <button class="tab-btn${isTab("security") ? " active" : ""}" data-tab="security" role="tab" type="button">${icons.lock(16)}<span>Security</span></button>
+          <button class="tab-btn${isTab("ignored") ? " active" : ""}" data-tab="ignored" role="tab" type="button">${icons.doc(16)}<span>Ignored</span></button>
+          <button class="tab-btn${isTab("ai") ? " active" : ""}" data-tab="ai" role="tab" type="button">${icons.sparkles(16)}<span>Smart Routing</span></button>
         </nav>
       </header>
 
-      <div id="tab-panel-general" class="tab-panel active" data-panel="general">
+      <div id="tab-panel-general" class="tab-panel${isTab("general") ? " active" : ""}" data-panel="general">
         <section class="group">
           <h2 class="group-title">This Mac</h2>
           <label class="field">
@@ -855,10 +859,25 @@ Photos and media go to Media/Photos`,
             </span>
             <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
           </label>
+          <div class="field" style="margin-top: 14px;">
+            <span class="field-label">Appearance</span>
+            <span class="field-hint">Choose whether RenegadeBox uses light, dark, or system appearance.</span>
+            <div class="theme-switcher" style="margin-top: 6px; max-width: 280px;" id="general-theme-switcher" role="radiogroup" aria-label="Appearance Theme">
+              <button class="theme-btn" data-theme="system" type="button" title="Match macOS system settings">
+                ${icons.monitor(14)}<span>System</span>
+              </button>
+              <button class="theme-btn" data-theme="light" type="button" title="Light theme">
+                ${icons.sun(14)}<span>Light</span>
+              </button>
+              <button class="theme-btn" data-theme="dark" type="button" title="Dark theme">
+                ${icons.moon(14)}<span>Dark</span>
+              </button>
+            </div>
+          </div>
         </section>
       </div>
 
-      <div id="tab-panel-storage" class="tab-panel" data-panel="storage">
+      <div id="tab-panel-storage" class="tab-panel${isTab("storage") ? " active" : ""}" data-panel="storage">
         <section class="group">
           <h2 class="group-title">Storage</h2>
           ${row("Provider", escapeHtml(providerLabel(status.endpoint)))}
@@ -872,7 +891,7 @@ Photos and media go to Media/Photos`,
         </section>
       </div>
 
-      <div id="tab-panel-security" class="tab-panel" data-panel="security">
+      <div id="tab-panel-security" class="tab-panel${isTab("security") ? " active" : ""}" data-panel="security">
         <section class="group">
           <h2 class="group-title">Key storage</h2>
           <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
@@ -901,7 +920,7 @@ Photos and media go to Media/Photos`,
         </section>
       </div>
 
-      <div id="tab-panel-ignored" class="tab-panel" data-panel="ignored">
+      <div id="tab-panel-ignored" class="tab-panel${isTab("ignored") ? " active" : ""}" data-panel="ignored">
         <section class="group">
           <h2 class="group-title">Ignored files</h2>
           <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
@@ -914,7 +933,7 @@ Photos and media go to Media/Photos`,
         </section>
       </div>
 
-      <div id="tab-panel-ai" class="tab-panel" data-panel="ai">
+      <div id="tab-panel-ai" class="tab-panel${isTab("ai") ? " active" : ""}" data-panel="ai">
         <!-- Master Feature Card -->
         <div class="feature-hero-card">
           <div class="feature-hero-content">
@@ -1129,11 +1148,248 @@ Photos and media go to Media/Photos`,
       </form>
     </main>`;
   }
+  function renderDesktopApp({ activeTab, overview, recent, conflicts, settings, theme, now }) {
+    const st = describeStatus(overview);
+    const pauseLabel = overview.paused ? "Resume" : "Pause";
+    const totalSize = settings.status.total_bytes ? ` · ${formatBytes(settings.status.total_bytes)}` : "";
+    const filesCount = settings.status.total_files ? `${settings.status.total_files} files${totalSize}` : "No files synced yet";
+    const statusClass = `status-${st.kind}`;
+    const navItems = [
+      { id: "files", label: "Recent Files", icon: icons.doc(16), count: recent.length > 0 ? recent.length : undefined },
+      { id: "conflicts", label: "Activity & Conflicts", icon: icons.sync(16), count: conflicts.length > 0 ? conflicts.length : undefined, isDanger: conflicts.length > 0 },
+      { id: "routing", label: "Smart Routing", icon: icons.sparkles(16) },
+      { id: "settings", label: "Settings", icon: icons.gear(16) }
+    ];
+    const navHtml = navItems.map((item) => `
+    <button class="sidebar-nav-item${activeTab === item.id ? " active" : ""}" type="button" data-desktop-tab="${item.id}" id="nav-tab-${item.id}">
+      <span class="sidebar-nav-content">
+        ${item.icon}
+        <span>${escapeHtml(item.label)}</span>
+      </span>
+      ${item.count !== undefined ? `<span class="sidebar-badge${item.isDanger ? " danger" : ""}">${item.count}</span>` : ""}
+    </button>`).join("");
+    let mainContent = "";
+    if (activeTab === "files") {
+      let body = "";
+      if (!overview.initialized) {
+        body = `
+        <div class="empty">
+          <p>RenegadeBox keeps a folder on this Mac in sync with storage you own.</p>
+          <button id="start-setup-btn" class="btn primary" type="button">Set up RenegadeBox…</button>
+        </div>`;
+      } else if (recent.length === 0) {
+        body = `<div class="empty"><p>Files you add to your RenegadeBox folder will show up here.</p></div>`;
+      } else {
+        const rows = recent.map((f, i) => {
+          const where = f.folder ? f.folder.split("/").pop() : "RenegadeBox";
+          return `
+          <tr class="file-table-row" data-index="${i}">
+            <td>
+              <div class="file-name-cell">
+                <span class="file-icon">${fileIcon(f.name)}</span>
+                <span title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+              </div>
+            </td>
+            <td><span class="file-meta-folder">${escapeHtml(where)}</span></td>
+            <td><span class="file-meta-time">${escapeHtml(relativeTime(f.modified_ms, now))}</span></td>
+            <td>
+              <div class="file-actions-cell">
+                <button class="btn" type="button" data-action="open" data-index="${i}">Open</button>
+                <button class="btn" type="button" data-action="reveal" data-index="${i}">Show in Finder</button>
+              </div>
+            </td>
+          </tr>`;
+        }).join("");
+        body = `
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Location</th>
+              <th>Modified</th>
+              <th style="text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>`;
+      }
+      mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Recent Files</h1>
+          <p class="desktop-subtitle">Files synchronized on this Mac</p>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="open-folder-btn" class="btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
+          <button id="pause-btn" class="btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        ${body}
+      </div>`;
+    } else if (activeTab === "conflicts") {
+      let body = "";
+      if (conflicts.length === 0) {
+        body = `
+        <div class="empty">
+          <span class="done-icon" style="color:var(--ok);">${icons.check(32)}</span>
+          <p style="margin-top:10px; font-weight:500;">All files are synchronized. Nothing needs your attention.</p>
+        </div>`;
+      } else {
+        const rows = conflicts.map((c, i) => {
+          const who = c.device ? escapeHtml(c.device) : "Another device";
+          const where = c.folder ? ` in ${escapeHtml(c.folder.split("/").pop())}` : "";
+          const other = c.device ? `Use ${escapeHtml(c.device)}’s version` : "Use the other version";
+          return `
+          <li class="conflict" data-index="${i}">
+            <div class="conflict-head">
+              <span class="file-icon">${fileIcon(c.original_name)}</span>
+              <span class="recent-text">
+                <span class="recent-name">${escapeHtml(c.original_name)}</span>
+                <span class="recent-meta">${who} saved a different version${where} · ${escapeHtml(relativeTime(c.modified_ms, now))}</span>
+              </span>
+            </div>
+            <div class="conflict-actions">
+              <button class="btn primary" type="button" data-index="${i}" data-resolution="keep_both" title="Keep both files side by side">Keep both</button>
+              <button class="btn" type="button" data-index="${i}" data-resolution="keep_conflicted">${other}</button>
+              <button class="btn" type="button" data-index="${i}" data-resolution="keep_local">Keep current</button>
+            </div>
+          </li>`;
+        }).join("");
+        body = `
+        <p class="explain">These files were changed in two places at once. RenegadeBox kept both versions so nothing was lost. Choose what to keep.</p>
+        <ul class="conflict-list">${rows}</ul>`;
+      }
+      mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Activity & Conflicts</h1>
+          <p class="desktop-subtitle">Review sync conflicts and choose resolutions</p>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        ${body}
+      </div>`;
+    } else if (activeTab === "routing") {
+      mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Smart Routing</h1>
+          <p class="desktop-subtitle">Synology NAS volume detection and AI-assisted file categorization</p>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        <div class="desktop-settings-container">
+          ${renderSettings(settings, "ai")}
+        </div>
+      </div>`;
+    } else if (activeTab === "settings") {
+      mainContent = `
+      <header class="desktop-content-header">
+        <div class="desktop-title-area">
+          <h1 class="desktop-title">Settings</h1>
+          <p class="desktop-subtitle">Preferences, storage, security, and smart routing</p>
+        </div>
+      </header>
+      <div class="desktop-content-body">
+        <div class="desktop-settings-container">
+          ${renderSettings(settings, "general")}
+        </div>
+      </div>`;
+    }
+    return `
+    <div class="desktop-layout">
+      <aside class="desktop-sidebar">
+        <div class="desktop-sidebar-top">
+          <div class="brand-header">
+            <div class="brand-info">
+              <span class="brand-icon">${icons.box(18)}</span>
+              <span class="brand-title">RenegadeBox</span>
+            </div>
+            <div class="sidebar-status-pill ${statusClass}" title="${escapeHtml(st.title)}${st.detail ? ` - ${escapeHtml(st.detail)}` : ""}">
+              <span class="dot"></span>
+              <span>${escapeHtml(st.title)}</span>
+            </div>
+          </div>
+          <nav class="sidebar-nav">
+            ${navHtml}
+          </nav>
+        </div>
+
+        <div class="desktop-sidebar-bottom">
+          <div class="storage-card">
+            <div class="storage-card-header">
+              <span>Vault Storage</span>
+              <span>${escapeHtml(providerLabel(settings.status.endpoint))}</span>
+            </div>
+            <div class="storage-card-val" title="${escapeHtml(filesCount)}">${escapeHtml(filesCount)}</div>
+            <div class="sidebar-quick-actions">
+              <button id="sidebar-folder-btn" class="sidebar-quick-btn" type="button" title="Open RenegadeBox folder in Finder">
+                ${icons.folder(12)}<span>Folder</span>
+              </button>
+              <button id="sidebar-pause-btn" class="sidebar-quick-btn" type="button" aria-pressed="${overview.paused}" title="${pauseLabel} syncing">
+                ${overview.paused ? icons.play(12) : icons.pause(12)}<span>${pauseLabel}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="theme-switcher" id="sidebar-theme-switcher" role="radiogroup" aria-label="Appearance Theme">
+            <button class="theme-btn${theme === "system" ? " active" : ""}" data-theme="system" type="button" title="System theme">
+              ${icons.monitor(12)}<span>Auto</span>
+            </button>
+            <button class="theme-btn${theme === "light" ? " active" : ""}" data-theme="light" type="button" title="Light theme">
+              ${icons.sun(12)}<span>Light</span>
+            </button>
+            <button class="theme-btn${theme === "dark" ? " active" : ""}" data-theme="dark" type="button" title="Dark theme">
+              ${icons.moon(12)}<span>Dark</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="desktop-main">
+        ${mainContent}
+      </main>
+    </div>`;
+  }
+
+  // src/lib/theme.ts
+  var STORAGE_KEY = "renegadebox-theme";
+  function getTheme() {
+    if (typeof localStorage === "undefined")
+      return "system";
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === "light" || saved === "dark" || saved === "system") {
+      return saved;
+    }
+    return "system";
+  }
+  function setTheme(theme) {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, theme);
+    }
+    applyTheme(theme);
+  }
+  function applyTheme(theme) {
+    const t = theme ?? getTheme();
+    if (typeof document === "undefined")
+      return;
+    const root = document.documentElement;
+    if (t === "system") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", t);
+    }
+  }
 
   // src/main.ts
   function currentView() {
     const v = new URLSearchParams(location.search).get("view") ?? location.hash.replace("#", "");
-    return v === "settings" || v === "setup" ? v : "popover";
+    if (v === "settings" || v === "setup" || v === "popover")
+      return v;
+    return "desktop";
   }
   var root = () => document.getElementById("app");
   var $ = (id) => document.getElementById(id);
@@ -1301,32 +1557,6 @@ Photos and media go to Media/Photos`,
     setInterval(renderPopoverView, 30000);
     refreshPopover();
   }
-  async function loadSettings() {
-    const [status, autostart, ignored, aiConfig] = await Promise.all([
-      invoke2("get_vault_status"),
-      invoke2("is_autostart_enabled").catch(() => false),
-      invoke2("get_ignored_patterns").catch(() => []),
-      invoke2("get_ai_config").catch(() => ({
-        enabled: false,
-        model: "google/gemini-2.0-flash-001",
-        smb_target: null,
-        rules: null,
-        auto_route: false,
-        has_api_key: false
-      }))
-    ]);
-    root().innerHTML = renderSettings({ status, autostart, ignored });
-    bindSettings(status, aiConfig);
-    document.querySelectorAll(".tab-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const tab = btn.dataset.tab;
-        document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-        document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-        btn.classList.add("active");
-        document.querySelector(`[data-panel="${tab}"]`)?.classList.add("active");
-      });
-    });
-  }
   function flash(id, text, isError = false) {
     const el = $(id);
     if (!el)
@@ -1386,6 +1616,20 @@ Photos and media go to Media/Photos`,
       } catch {
         input.checked = !input.checked;
       }
+    });
+    document.querySelectorAll("#general-theme-switcher .theme-btn").forEach((btn) => {
+      const t = btn.dataset.theme;
+      if (t === getTheme())
+        btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        const chosen = btn.dataset.theme;
+        if (chosen) {
+          setTheme(chosen);
+          document.querySelectorAll(".theme-btn").forEach((b) => {
+            b.classList.toggle("active", b.dataset.theme === chosen);
+          });
+        }
+      });
     });
     $("ignored-save").addEventListener("click", async () => {
       const patterns = $("ignored-input").value.split(`
@@ -1598,12 +1842,6 @@ ${rule}` : rule;
     $("reconnect-btn").addEventListener("click", () => void invoke2("open_setup"));
     $("quit-btn").addEventListener("click", () => void invoke2("quit_app"));
   }
-  function initSettings() {
-    document.title = "RenegadeBox Settings";
-    loadSettings().catch((err) => {
-      root().innerHTML = `<main class="settings"><p class="form-error">${friendlyError(errText(err), "Settings couldn't be loaded.")}</p></main>`;
-    });
-  }
   function initSetup() {
     document.title = "Set up RenegadeBox";
     root().innerHTML = renderSetup();
@@ -1696,6 +1934,187 @@ ${rule}` : rule;
     choose(provider);
     show(1);
   }
+  var desktop = {
+    activeTab: "files",
+    overview: null,
+    recent: [],
+    conflicts: [],
+    settingsModel: null,
+    aiConfig: undefined,
+    theme: getTheme(),
+    busy: false
+  };
+  async function refreshDesktop() {
+    try {
+      const [overview, recent, status, autostart, ignored, aiConfig] = await Promise.all([
+        invoke2("get_sync_overview"),
+        invoke2("list_recent_files", { limit: 25 }),
+        invoke2("get_vault_status"),
+        invoke2("is_autostart_enabled").catch(() => false),
+        invoke2("get_ignored_patterns").catch(() => []),
+        invoke2("get_ai_config").catch(() => {
+          return;
+        })
+      ]);
+      desktop.overview = overview;
+      desktop.recent = recent;
+      desktop.settingsModel = { status, autostart, ignored };
+      desktop.aiConfig = aiConfig;
+      desktop.conflicts = overview.conflicts > 0 || desktop.activeTab === "conflicts" ? await invoke2("list_conflicts") : [];
+    } catch (err) {
+      desktop.overview = { initialized: true, paused: false, syncing: false, pending: 0, conflicts: 0, error: errText(err) };
+      if (!desktop.settingsModel) {
+        desktop.settingsModel = {
+          status: {
+            initialized: true,
+            folder: "~/RenegadeBox",
+            bucket: "renegadebox-vault",
+            region: "us-east-1",
+            endpoint: null,
+            device_id: null,
+            device_name: "Mac",
+            hub_url: null,
+            key_store: "System keychain",
+            total_files: 0,
+            pending_changes: 0,
+            total_bytes: 0
+          },
+          autostart: false,
+          ignored: [".DS_Store"]
+        };
+      }
+    }
+    desktop.theme = getTheme();
+    renderDesktopView();
+  }
+  function renderDesktopView() {
+    if (!desktop.overview || !desktop.settingsModel)
+      return;
+    root().innerHTML = renderDesktopApp({
+      activeTab: desktop.activeTab,
+      overview: desktop.overview,
+      recent: desktop.recent,
+      conflicts: desktop.conflicts,
+      settings: desktop.settingsModel,
+      theme: desktop.theme,
+      now: Date.now()
+    });
+    bindDesktopEvents();
+  }
+  function bindDesktopEvents() {
+    if (!desktop.settingsModel)
+      return;
+    document.querySelectorAll("[data-desktop-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.desktopTab;
+        if (tab && desktop.activeTab !== tab) {
+          desktop.activeTab = tab;
+          renderDesktopView();
+        }
+      });
+    });
+    document.querySelectorAll(".theme-btn").forEach((btn) => {
+      const t = btn.dataset.theme;
+      if (t === desktop.theme)
+        btn.classList.add("active");
+      btn.addEventListener("click", () => {
+        const chosen = btn.dataset.theme;
+        if (chosen) {
+          setTheme(chosen);
+          desktop.theme = chosen;
+          document.querySelectorAll(".theme-btn").forEach((b) => {
+            b.classList.toggle("active", b.dataset.theme === chosen);
+          });
+        }
+      });
+    });
+    $("sidebar-folder-btn")?.addEventListener("click", () => void invoke2("open_sync_folder"));
+    $("open-folder-btn")?.addEventListener("click", () => void invoke2("open_sync_folder"));
+    $("start-setup-btn")?.addEventListener("click", () => void invoke2("open_setup"));
+    const togglePause = async () => {
+      if (!desktop.overview || desktop.busy)
+        return;
+      desktop.busy = true;
+      try {
+        if (desktop.overview.paused) {
+          await invoke2("resume_sync");
+        } else {
+          await invoke2("pause_sync");
+        }
+        await refreshDesktop();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        desktop.busy = false;
+      }
+    };
+    $("sidebar-pause-btn")?.addEventListener("click", togglePause);
+    $("pause-btn")?.addEventListener("click", togglePause);
+    document.querySelectorAll("[data-action='open']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.index);
+        const f = desktop.recent[idx];
+        if (f)
+          invoke2("open_file", { path: f.path });
+      });
+    });
+    document.querySelectorAll("[data-action='reveal']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.dataset.index);
+        const f = desktop.recent[idx];
+        if (f)
+          invoke2("reveal_in_finder", { path: f.path });
+      });
+    });
+    document.querySelectorAll("[data-resolution]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const idx = Number(btn.dataset.index);
+        const item = desktop.conflicts[idx];
+        if (!item || desktop.busy)
+          return;
+        desktop.busy = true;
+        btn.closest(".conflict")?.querySelectorAll("button").forEach((b) => b.disabled = true);
+        await resolveConflict(invoke2, item, btn.dataset.resolution);
+        desktop.busy = false;
+        await refreshDesktop();
+      });
+    });
+    if (desktop.activeTab === "settings" || desktop.activeTab === "routing") {
+      bindSettings(desktop.settingsModel.status, desktop.aiConfig);
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const tab = btn.dataset.tab;
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+          document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+          btn.classList.add("active");
+          document.querySelector(`[data-panel="${tab}"]`)?.classList.add("active");
+        });
+      });
+    }
+  }
+  function initDesktop() {
+    document.title = "RenegadeBox";
+    applyTheme();
+    refreshDesktop();
+    onBackendEvents(["vault-changed", "sync-started", "sync-finished", "status-changed", "sync-paused", "sync-resumed"], () => void refreshDesktop());
+    onBackendEvents(["navigate-tab"], (event) => {
+      const tab = event?.payload ?? event;
+      if (tab && ["files", "conflicts", "routing", "settings"].includes(tab)) {
+        desktop.activeTab = tab;
+        renderDesktopView();
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        desktop.activeTab = "settings";
+        renderDesktopView();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        invoke2("open_sync_folder");
+      }
+    });
+  }
   function mountPreviewBar(view, scenario) {
     document.body.classList.add("preview", `preview-${view}`);
     const labels = {
@@ -1709,20 +2128,25 @@ ${rule}` : rule;
     const link = (href, text, active) => `<a href="${href}"${active ? ' aria-current="page"' : ""}>${text}</a>`;
     const bar = document.createElement("nav");
     bar.className = "preview-bar";
-    bar.innerHTML = `<span class="preview-label">Preview</span>` + MOCK_SCENARIOS.map((s) => link(`?view=popover&state=${s}`, labels[s], view === "popover" && scenario === s)).join("") + link("?view=settings", "Settings", view === "settings") + link("?view=setup", "Setup", view === "setup");
+    bar.innerHTML = `<span class="preview-label">Preview</span>` + link("?view=desktop", "Desktop Window", view === "desktop") + MOCK_SCENARIOS.map((s) => link(`?view=desktop&state=${s}`, labels[s], view === "desktop" && scenario === s)).join("") + link("?view=settings", "Settings", view === "settings") + link("?view=setup", "Setup", view === "setup");
     document.body.prepend(bar);
   }
   function init() {
+    applyTheme();
     const view = currentView();
     document.body.classList.add(`view-${view}`);
     if (!hasTauri())
       mountPreviewBar(view, mockScenarioFromUrl());
-    if (view === "settings")
-      initSettings();
-    else if (view === "setup")
+    if (view === "settings") {
+      desktop.activeTab = "settings";
+      initDesktop();
+    } else if (view === "setup") {
       initSetup();
-    else
+    } else if (view === "popover") {
       initPopover();
+    } else {
+      initDesktop();
+    }
   }
   if (document.readyState === "loading")
     document.addEventListener("DOMContentLoaded", init);

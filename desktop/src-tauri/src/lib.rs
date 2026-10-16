@@ -22,9 +22,9 @@ pub fn run() {
     let watcher_for_setup = watcher_handle.clone();
 
     tauri::Builder::default()
-        // Must be registered first: a second launch just brings up the popover.
+        // Must be registered first: a second launch just brings up the main window.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            windows::show_popover(app);
+            windows::show_main_window(app);
         }))
         .manage(watcher_handle)
         .manage(windows::PopoverState::default())
@@ -80,38 +80,42 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
-                        position,
-                        rect,
                         ..
                     } = event
                     {
-                        windows::toggle_popover(tray.app_handle(), position, rect);
+                        windows::toggle_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
-            // First run: walk through setup. Otherwise stay quietly in the menu bar.
+            // First run: walk through setup. Otherwise show the main window.
             let initialized = renegadebox_engine::config::Profile::locate()
                 .map(|p| p.config_path().exists())
                 .unwrap_or(false);
             if !initialized {
                 windows::open_setup(app.handle());
+            } else {
+                windows::show_main_window(app.handle());
             }
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() != windows::POPOVER {
-                return;
-            }
-            match event {
-                // Like a menu: the popover goes away as soon as you click elsewhere.
-                WindowEvent::Focused(false) => windows::hide_popover(window.app_handle()),
-                WindowEvent::CloseRequested { api, .. } => {
+            if window.label() == windows::MAIN {
+                if let WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
-                    windows::hide_popover(window.app_handle());
+                    let _ = window.hide();
                 }
-                _ => {}
+            } else if window.label() == windows::POPOVER {
+                match event {
+                    // Like a menu: the popover goes away as soon as you click elsewhere.
+                    WindowEvent::Focused(false) => windows::hide_popover(window.app_handle()),
+                    WindowEvent::CloseRequested { api, .. } => {
+                        api.prevent_close();
+                        windows::hide_popover(window.app_handle());
+                    }
+                    _ => {}
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![

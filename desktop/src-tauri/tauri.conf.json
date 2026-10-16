@@ -12,22 +12,17 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "label": "popover",
+        "label": "main",
         "title": "RenegadeBox",
         "url": "index.html",
-        "width": 360,
-        "height": 480,
-        "resizable": false,
-        "decorations": false,
-        "visible": false,
-        "skipTaskbar": true,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true,
-        "minimizable": false,
-        "maximizable": false,
-        "closable": false,
-        "fullscreen": false,
-        "shadow": true
+        "width": 1040,
+        "height": 700,
+        "minWidth": 840,
+        "minHeight": 560,
+        "resizable": true,
+        "decorations": true,
+        "visible": true,
+        "center": true
       }
     ],
     "security": {

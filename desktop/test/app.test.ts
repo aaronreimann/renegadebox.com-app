@@ -77,21 +77,20 @@ describe("tauri configuration", () => {
     expect(existsSync(join(DESKTOP, "src/main.js"))).toBe(true);
   });
 
-  it("declares only a hidden, undecorated popover window up front", () => {
+  it("declares the wide desktop window up front", () => {
     expect(conf.app.windows).toHaveLength(1);
     const w = conf.app.windows[0];
-    expect(w.label).toBe("popover");
-    expect(w.width).toBe(360);
-    expect(w.height).toBe(480);
-    expect(w.decorations).toBe(false);
-    expect(w.visible).toBe(false);
-    expect(w.resizable).toBe(false);
-    expect(w.skipTaskbar).toBe(true);
+    expect(w.label).toBe("main");
+    expect(w.width).toBe(1040);
+    expect(w.height).toBe(700);
+    expect(w.decorations).toBe(true);
+    expect(w.visible).toBe(true);
+    expect(w.resizable).toBe(true);
   });
 
   it("grants core window/event permissions to the app windows", () => {
     const cap = JSON.parse(read("src-tauri/capabilities/default.json"));
-    expect(cap.windows).toEqual(expect.arrayContaining(["popover", "settings", "setup"]));
+    expect(cap.windows).toEqual(expect.arrayContaining(["main", "popover", "settings", "setup"]));
     expect(cap.permissions).toContain("core:default");
   });
 });
