@@ -223,7 +223,11 @@ export function renderPopoverSettings({ status, autostart, ignored }: SettingsMo
     </section>`;
 }
 
-export function renderSettings({ status, autostart, ignored, notifyConflicts = true, notifySync = false }: SettingsModel, initialTab: string = "general"): string {
+export function renderSettings(
+  { status, autostart, ignored, notifyConflicts = true, notifySync = false }: SettingsModel,
+  initialTab: string = "general",
+  hideHeaderTitle: boolean = false,
+): string {
   const kind = keyStoreKind(status.key_store);
   const row = (label: string, value: string) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
   const folder = status.folder ?? "Not set up";
@@ -235,7 +239,7 @@ export function renderSettings({ status, autostart, ignored, notifyConflicts = t
   return `
     <main class="settings">
       <header class="settings-window-header">
-        <h1 class="window-title">Settings</h1>
+        ${hideHeaderTitle ? "" : `<h1 class="window-title">Settings</h1>`}
         <nav class="settings-tabs" role="tablist">
           <button class="tab-btn${isTab("general") ? " active" : ""}" data-tab="general" role="tab" type="button">${icons.gear(16)}<span>General</span></button>
           <button class="tab-btn${isTab("storage") ? " active" : ""}" data-tab="storage" role="tab" type="button">${icons.box(16)}<span>Storage</span></button>
@@ -822,7 +826,7 @@ export function renderDesktopApp({
       </header>
       <div class="desktop-content-body">
         <div class="desktop-settings-container">
-          ${renderSettings(settings, "ai")}
+          ${renderSettings(settings, "ai", true)}
         </div>
       </div>`;
   } else if (activeTab === "settings") {
@@ -835,7 +839,7 @@ export function renderDesktopApp({
       </header>
       <div class="desktop-content-body">
         <div class="desktop-settings-container">
-          ${renderSettings(settings, "general")}
+          ${renderSettings(settings, "general", true)}
         </div>
       </div>`;
   }

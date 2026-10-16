@@ -752,8 +752,8 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
 
 .desktop-layout {
   display: flex;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: var(--bg);
 }
@@ -772,6 +772,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   padding: 18px 14px 14px;
   user-select: none;
   box-sizing: border-box;
+  height: 100%;
 }
 
 .desktop-sidebar-top {
@@ -815,13 +816,15 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 500;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .sidebar-status-pill.status-ok { color: var(--ok); border-color: rgba(46, 139, 87, 0.25); }
 .sidebar-status-pill.status-syncing { color: var(--accent); border-color: rgba(47, 107, 219, 0.25); }
@@ -1063,7 +1066,7 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background: var(--bg);
 }
@@ -1330,16 +1333,30 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
 
 /* Wide Settings Form Container */
 .desktop-settings-container {
-  max-width: 680px;
+  max-width: 720px;
+}
+
+.desktop-settings-container .settings {
+  padding: 0;
 }
 
 .desktop-settings-container .settings-window-header {
-  margin-bottom: 16px;
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.desktop-settings-container .settings-tabs {
+  margin-top: 0;
 }
 
 /* ---------- browser preview only (no Tauri) ---------- */
 
-body.preview { background: var(--bg-subtle); height: auto; min-height: 100%; }
+body.preview {
+  background: #141416;
+  min-height: 100vh;
+  margin: 0;
+}
+
 .preview-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1350,18 +1367,26 @@ body.preview { background: var(--bg-subtle); height: auto; min-height: 100%; }
   background: var(--bg);
   font-size: 12px;
 }
+
 .preview-label { font-weight: 600; color: var(--text-muted); }
 .preview-bar a { color: var(--accent); text-decoration: none; }
 .preview-bar a[aria-current="page"] { color: var(--text); font-weight: 600; }
+
 body.preview #app {
-  margin: 32px auto;
-  max-width: calc(100% - 32px);
+  margin: 20px auto;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
   overflow: hidden;
 }
+
 body.preview-popover #app { width: 360px; height: 480px; }
-body.preview-settings #app { width: 540px; height: auto; }
+body.preview-desktop #app,
+body.preview-settings #app {
+  width: 1040px;
+  height: 700px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 72px);
+}
 body.preview-setup #app { width: 520px; height: 640px; }
