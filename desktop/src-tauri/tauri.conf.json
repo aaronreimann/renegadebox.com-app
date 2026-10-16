@@ -12,13 +12,22 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "popover",
         "title": "RenegadeBox",
-        "width": 1040,
-        "height": 700,
-        "minWidth": 840,
-        "minHeight": 560,
-        "resizable": true,
-        "fullscreen": false
+        "url": "index.html",
+        "width": 360,
+        "height": 480,
+        "resizable": false,
+        "decorations": false,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "minimizable": false,
+        "maximizable": false,
+        "closable": false,
+        "fullscreen": false,
+        "shadow": true
       }
     ],
     "security": {
@@ -34,6 +43,9 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
   }
 }

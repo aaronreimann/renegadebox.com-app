@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Core window and event access for the popover, Settings and Setup windows.","local":true,"windows":["popover","settings","setup"],"permissions":["core:default"]}}

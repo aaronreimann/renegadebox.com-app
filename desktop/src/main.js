@@ -1,1785 +1,1120 @@
-var __defProp = Object.defineProperty;
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, {
-      get: all[name],
-      enumerable: true,
-      configurable: true,
-      set: __exportSetter.bind(all, name)
-    });
-};
-var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
-
-// node_modules/@tauri-apps/api/external/tslib/tslib.es6.js
-function __classPrivateFieldGet(receiver, state, kind, f) {
-  if (kind === "a" && !f)
-    throw new TypeError("Private accessor was defined without a getter");
-  if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver))
-    throw new TypeError("Cannot read private member from an object whose class did not declare it");
-  return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
-}
-function __classPrivateFieldSet(receiver, state, value, kind, f) {
-  if (kind === "m")
-    throw new TypeError("Private method is not writable");
-  if (kind === "a" && !f)
-    throw new TypeError("Private accessor was defined without a setter");
-  if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver))
-    throw new TypeError("Cannot write private member to an object whose class did not declare it");
-  return kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value), value;
-}
-var init_tslib_es6 = () => {};
-
-// node_modules/@tauri-apps/api/core.js
-function transformCallback(callback, once = false) {
-  return window.__TAURI_INTERNALS__.transformCallback(callback, once);
-}
-async function invoke(cmd, args = {}, options) {
-  return window.__TAURI_INTERNALS__.invoke(cmd, args, options);
-}
-var _Channel_instances, _Channel_onmessage, _Channel_nextMessageIndex, _Channel_pendingMessages, _Channel_messageEndIndex, _Channel_deliver, _Resource_rid, SERIALIZE_TO_IPC_FN = "__TAURI_TO_IPC_KEY__", Channel, Resource;
-var init_core = __esm(() => {
-  init_tslib_es6();
-  Channel = class Channel {
-    constructor(onmessage) {
-      _Channel_instances.add(this);
-      _Channel_onmessage.set(this, undefined);
-      _Channel_nextMessageIndex.set(this, 0);
-      _Channel_pendingMessages.set(this, []);
-      _Channel_messageEndIndex.set(this, undefined);
-      __classPrivateFieldSet(this, _Channel_onmessage, onmessage || (() => {}), "f");
-      this.id = transformCallback((rawMessage) => {
-        const index = rawMessage.index;
-        if ("end" in rawMessage) {
-          if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
-            this.cleanupCallback();
-          } else {
-            __classPrivateFieldSet(this, _Channel_messageEndIndex, index, "f");
-          }
-          return;
-        }
-        const message = rawMessage.message;
-        if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
-          __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message);
-          __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
-          while (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") in __classPrivateFieldGet(this, _Channel_pendingMessages, "f")) {
-            const message2 = __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
-            __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message2);
-            delete __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
-            __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
-          }
-          if (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") === __classPrivateFieldGet(this, _Channel_messageEndIndex, "f")) {
-            this.cleanupCallback();
-          }
-        } else {
-          __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[index] = message;
-        }
+(() => {
+  var __defProp = Object.defineProperty;
+  var __returnValue = (v) => v;
+  function __exportSetter(name, newValue) {
+    this[name] = __returnValue.bind(null, newValue);
+  }
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, {
+        get: all[name],
+        enumerable: true,
+        configurable: true,
+        set: __exportSetter.bind(all, name)
       });
-    }
-    cleanupCallback() {
-      window.__TAURI_INTERNALS__.unregisterCallback(this.id);
-    }
-    set onmessage(handler) {
-      __classPrivateFieldSet(this, _Channel_onmessage, handler, "f");
-    }
-    get onmessage() {
-      return __classPrivateFieldGet(this, _Channel_onmessage, "f");
-    }
-    [(_Channel_onmessage = new WeakMap, _Channel_nextMessageIndex = new WeakMap, _Channel_pendingMessages = new WeakMap, _Channel_messageEndIndex = new WeakMap, _Channel_instances = new WeakSet, _Channel_deliver = function _Channel_deliver2(message) {
-      try {
-        __classPrivateFieldGet(this, _Channel_onmessage, "f").call(this, message);
-      } catch (error) {
-        queueMicrotask(() => {
-          throw error;
-        });
-      }
-    }, SERIALIZE_TO_IPC_FN)]() {
-      return `__CHANNEL__:${this.id}`;
-    }
-    toJSON() {
-      return this[SERIALIZE_TO_IPC_FN]();
-    }
   };
-  Resource = class Resource {
-    get rid() {
-      return __classPrivateFieldGet(this, _Resource_rid, "f");
-    }
-    constructor(rid) {
-      _Resource_rid.set(this, undefined);
-      __classPrivateFieldSet(this, _Resource_rid, rid, "f");
-    }
-    async close() {
-      return invoke("plugin:resources|close", {
-        rid: this.rid
-      });
-    }
-    async[(_Resource_rid = new WeakMap, Symbol.asyncDispose)]() {
-      await this.close();
-    }
-  };
-});
+  var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 
-// node_modules/@tauri-apps/api/event.js
-var exports_event = {};
-__export(exports_event, {
-  once: () => once,
-  listen: () => listen,
-  emitTo: () => emitTo,
-  emit: () => emit,
-  TauriEvent: () => TauriEvent
-});
-async function _unlisten(event, eventId) {
-  window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, eventId);
-  await invoke("plugin:event|unlisten", {
-    event,
-    eventId
-  });
-}
-async function listen(event, handler, options) {
-  var _a;
-  const target = typeof (options === null || options === undefined ? undefined : options.target) === "string" ? { kind: "AnyLabel", label: options.target } : (_a = options === null || options === undefined ? undefined : options.target) !== null && _a !== undefined ? _a : { kind: "Any" };
-  return invoke("plugin:event|listen", {
-    event,
-    target,
-    handler: transformCallback(handler)
-  }).then((eventId) => {
-    return async () => _unlisten(event, eventId);
-  });
-}
-async function once(event, handler, options) {
-  return listen(event, (eventData) => {
-    _unlisten(event, eventData.id);
-    handler(eventData);
-  }, options);
-}
-async function emit(event, payload) {
-  await invoke("plugin:event|emit", {
-    event,
-    payload
-  });
-}
-async function emitTo(target, event, payload) {
-  const eventTarget = typeof target === "string" ? { kind: "AnyLabel", label: target } : target;
-  await invoke("plugin:event|emit_to", {
-    target: eventTarget,
-    event,
-    payload
-  });
-}
-var TauriEvent;
-var init_event = __esm(() => {
-  init_core();
-  (function(TauriEvent2) {
-    TauriEvent2["WINDOW_RESIZED"] = "tauri://resize";
-    TauriEvent2["WINDOW_MOVED"] = "tauri://move";
-    TauriEvent2["WINDOW_CLOSE_REQUESTED"] = "tauri://close-requested";
-    TauriEvent2["WINDOW_DESTROYED"] = "tauri://destroyed";
-    TauriEvent2["WINDOW_FOCUS"] = "tauri://focus";
-    TauriEvent2["WINDOW_BLUR"] = "tauri://blur";
-    TauriEvent2["WINDOW_SCALE_FACTOR_CHANGED"] = "tauri://scale-change";
-    TauriEvent2["WINDOW_THEME_CHANGED"] = "tauri://theme-changed";
-    TauriEvent2["WINDOW_CREATED"] = "tauri://window-created";
-    TauriEvent2["WINDOW_SUSPENDED"] = "tauri://suspended";
-    TauriEvent2["WINDOW_RESUMED"] = "tauri://resumed";
-    TauriEvent2["WEBVIEW_CREATED"] = "tauri://webview-created";
-    TauriEvent2["DRAG_ENTER"] = "tauri://drag-enter";
-    TauriEvent2["DRAG_OVER"] = "tauri://drag-over";
-    TauriEvent2["DRAG_DROP"] = "tauri://drag-drop";
-    TauriEvent2["DRAG_LEAVE"] = "tauri://drag-leave";
-  })(TauriEvent || (TauriEvent = {}));
-});
+  // node_modules/@tauri-apps/api/external/tslib/tslib.es6.js
+  function __classPrivateFieldGet(receiver, state, kind, f) {
+    if (kind === "a" && !f)
+      throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver))
+      throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+  }
+  function __classPrivateFieldSet(receiver, state, value, kind, f) {
+    if (kind === "m")
+      throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f)
+      throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver))
+      throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value), value;
+  }
+  var init_tslib_es6 = () => {};
 
-// src/main.ts
-init_core();
-async function tauriInvoke(cmd, args) {
-  const hasTauri = typeof window !== "undefined" && (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__));
-  if (hasTauri) {
-    try {
-      return await invoke(cmd, args);
-    } catch (err) {
-      console.error(`[Tauri IPC Error: ${cmd}]`, err);
-      throw err;
-    }
+  // node_modules/@tauri-apps/api/core.js
+  function transformCallback(callback, once = false) {
+    return window.__TAURI_INTERNALS__.transformCallback(callback, once);
   }
-  console.log(`[IPC Mock] ${cmd}`, args);
-  if (cmd === "get_vault_status") {
-    return {
-      initialized: true,
-      folder: "/Users/me/RenegadeBox",
-      bucket: "my-renegadebox-bucket",
-      region: "us-east-1",
-      endpoint: "",
-      device_id: "68a3c8a0-c930-4984-bc66-079164e213f6",
-      device_name: "My-MBP",
-      hub_url: "ws://localhost:8787/ws",
-      key_store: "macOS Keychain (Hardware-backed)",
-      total_files: 5,
-      pending_changes: 0,
-      total_bytes: 42180900
-    };
+  async function invoke(cmd, args = {}, options) {
+    return window.__TAURI_INTERNALS__.invoke(cmd, args, options);
   }
-  if (cmd === "list_synced_files") {
-    return [
-      { path: "welcome.txt", size: 124, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 2, hash: "9e6db089d244e029996efe34bfc4aeff", blob_id: "825e8d97b0b87e5af6d485e2ddd27991" },
-      { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 5, hash: "a1b2c3d4e5f60718293a", blob_id: "deadbeefcafebabe0102" },
-      { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 1, hash: "5e6f7a8b9c0d1e2f3a4b", blob_id: "1234567890abcdef1234" },
-      { path: "Photos/ship-flag.jpg", size: 5214000, status: "synced", mtime_ns: Date.now() * 1e6 - 86400000 * 3, hash: "aabbccddeeff00112233", blob_id: "f0f0e1e1d2d2c3c3b4b4" },
-      { path: "Notes (conflicted copy My-MBP 2026-10-15).txt", size: 1024, status: "conflicted", mtime_ns: Date.now() * 1e6 - 3600000, hash: "conflict999999999999", blob_id: "conflictedblob000000" }
-    ];
-  }
-  if (cmd === "trigger_sync") {
-    return {
-      success: true,
-      message: "pushed: 0 up | pulled: 0 down | conflicts: 0",
-      uploaded: 0,
-      downloaded: 0,
-      conflicts: 0,
-      failed: 0
-    };
-  }
-  if (cmd === "is_sync_paused") {
-    return false;
-  }
-  if (cmd === "get_ignored_patterns") {
-    return [".DS_Store", "Thumbs.db", "*.tmp", ".git/", "node_modules/"];
-  }
-  if (cmd === "get_file_history") {
-    return [
-      {
-        timestamp_ms: Date.now() - 3600000,
-        date_str: "Today at 22:30 UTC",
-        device_name: "My-MBP",
-        lamport: 42,
-        size: 18450,
-        hash: "5e6f7a8b9c0d1e2f3a4b",
-        blob_id: "1234567890abcdef1234",
-        action: "Current Head",
-        is_current: true
-      },
-      {
-        timestamp_ms: Date.now() - 86400000,
-        date_str: "Yesterday at 14:15 UTC",
-        device_name: "My-MBP",
-        lamport: 18,
-        size: 14200,
-        hash: "11223344556677889900",
-        blob_id: "abcdefabcdef12345678",
-        action: "Initial Commit",
-        is_current: false
-      }
-    ];
-  }
-  if (cmd === "is_autostart_enabled") {
-    return false;
-  }
-  if (cmd === "set_autostart_enabled") {
-    return args?.enabled ?? false;
-  }
-  if (cmd === "set_key_store") {
-    return args?.useKeychain ? "System keychain" : "Unprotected file";
-  }
-  if (cmd === "add_to_finder_favorites") {
-    return "Opened ~/RenegadeBox in Finder";
-  }
-  if (cmd === "setup_vault") {
-    return {
-      initialized: true,
-      folder: args?.payload?.folder || "/Users/me/RenegadeBox",
-      bucket: args?.payload?.bucket || "my-renegadebox-bucket",
-      region: args?.payload?.region || "us-east-1",
-      endpoint: args?.payload?.endpoint || null,
-      device_id: "68a3c8a0-c930-4984-bc66-079164e213f6",
-      device_name: args?.payload?.device_name || "My-MBP",
-      hub_url: null,
-      key_store: "App-Protected Private Keystore (Zero Prompts)",
-      total_files: 0,
-      pending_changes: 0,
-      total_bytes: 0
-    };
-  }
-  return {};
-}
-var allFiles = [];
-var selectedFile = null;
-var currentVaultStatus = null;
-var isSyncPaused = false;
-var currentDirectory = "";
-var currentFilter = "all";
-var currentSortKey = "name";
-var currentSortAsc = true;
-var currentViewMode = "list";
-var activeNav = "files";
-var starredPaths = new Set;
-var navHistory = [""];
-var navHistoryIndex = 0;
-var activityLogs = [
-  {
-    id: "init-1",
-    title: "Vault online & watching ~/RenegadeBox",
-    subtitle: "Native macOS FSEvents active with 500ms debouncing",
-    time: "Just now",
-    type: "system",
-    timestamp: Date.now()
-  }
-];
-function loadStarred() {
-  try {
-    const raw = localStorage.getItem("rbox_starred");
-    if (raw)
-      starredPaths = new Set(JSON.parse(raw));
-  } catch (_) {
-    starredPaths = new Set;
-  }
-}
-function saveStarred() {
-  try {
-    localStorage.setItem("rbox_starred", JSON.stringify(Array.from(starredPaths)));
-  } catch (_) {}
-}
-function logActivity(title, subtitle, type = "system") {
-  activityLogs.unshift({
-    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    title,
-    subtitle,
-    time: "Just now",
-    type,
-    timestamp: Date.now()
-  });
-  if (activityLogs.length > 50)
-    activityLogs.pop();
-  renderActivityFeed();
-}
-function getFileTypeInfo(filePath) {
-  const isFolder = !filePath.includes(".") || filePath.endsWith("/");
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
-  if (isFolder) {
-    return {
-      label: "File folder",
-      isFolder: true,
-      iconSvg: `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="#fbbf24" stroke="#d97706" stroke-width="1.5">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-        </svg>
-      `
-    };
-  }
-  if (["mp4", "mov", "mkv", "avi", "webm"].includes(ext)) {
-    return {
-      label: "MP4 Video",
-      isFolder: false,
-      iconSvg: `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="#60a5fa" stroke="#2563eb" stroke-width="1.5">
-          <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-          <line x1="7" y1="2" x2="7" y2="22"></line>
-          <line x1="17" y1="2" x2="17" y2="22"></line>
-          <line x1="2" y1="12" x2="22" y2="12"></line>
-        </svg>
-      `
-    };
-  }
-  if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
-    return {
-      label: "Image",
-      isFolder: false,
-      iconSvg: `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="#c084fc" stroke="#9333ea" stroke-width="1.5">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-          <polyline points="21 15 16 10 5 21"></polyline>
-        </svg>
-      `
-    };
-  }
-  if (ext === "pdf") {
-    return {
-      label: "PDF Document",
-      isFolder: false,
-      iconSvg: `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="#f87171" stroke="#dc2626" stroke-width="1.5">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-        </svg>
-      `
-    };
-  }
-  return {
-    label: `${ext.toUpperCase() || "Plain"} Document`,
-    isFolder: false,
-    iconSvg: `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="#93c5fd" stroke="#3b82f6" stroke-width="1.5">
-        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-        <polyline points="13 2 13 9 20 9"></polyline>
-      </svg>
-    `
-  };
-}
-function formatBytes(bytes) {
-  if (bytes === 0)
-    return "--";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, (m) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;"
-  })[m] || m);
-}
-function getFilteredAndSortedFiles() {
-  const searchInput = document.getElementById("search-input");
-  const q = searchInput?.value.toLowerCase().trim() || "";
-  let list = allFiles.slice();
-  if (activeNav === "starred") {
-    list = list.filter((f) => starredPaths.has(f.path));
-  } else if (q.length === 0 && currentDirectory) {
-    list = list.filter((f) => f.path.startsWith(`${currentDirectory}/`));
-  }
-  if (currentFilter === "documents") {
-    list = list.filter((f) => {
-      const ext = f.path.split(".").pop()?.toLowerCase() || "";
-      return ["pdf", "txt", "doc", "docx", "md", "rtf", "odt"].includes(ext);
-    });
-  } else if (currentFilter === "media") {
-    list = list.filter((f) => {
-      const ext = f.path.split(".").pop()?.toLowerCase() || "";
-      return ["mp4", "mov", "avi", "mkv", "jpg", "jpeg", "png", "gif", "webp", "mp3", "wav"].includes(ext);
-    });
-  } else if (currentFilter === "code") {
-    list = list.filter((f) => {
-      const ext = f.path.split(".").pop()?.toLowerCase() || "";
-      return ["rs", "ts", "js", "py", "json", "toml", "html", "css", "sh", "yaml", "yml"].includes(ext);
-    });
-  } else if (currentFilter === "conflicted") {
-    list = list.filter((f) => f.status === "conflicted");
-  }
-  if (q.length > 0) {
-    list = list.filter((f) => f.path.toLowerCase().includes(q));
-  }
-  list.sort((a, b) => {
-    let comp = 0;
-    if (currentSortKey === "name") {
-      comp = a.path.localeCompare(b.path);
-    } else if (currentSortKey === "type") {
-      const typeA = getFileTypeInfo(a.path).label;
-      const typeB = getFileTypeInfo(b.path).label;
-      comp = typeA.localeCompare(typeB);
-    } else if (currentSortKey === "size") {
-      comp = a.size - b.size;
-    } else if (currentSortKey === "status") {
-      comp = a.status.localeCompare(b.status);
-    }
-    return currentSortAsc ? comp : -comp;
-  });
-  return list;
-}
-function renderFileTable(files) {
-  const tbody = document.getElementById("file-table-body");
-  if (!tbody)
-    return;
-  if (files.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
-          <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 0.5rem;">
-            No synchronized files found
-          </div>
-          <div style="font-size: 0.85rem;">
-            Add files or drag them into <strong>~/RenegadeBox</strong> to automatically encrypt and stash in S3.
-          </div>
-        </td>
-      </tr>
-    `;
-    return;
-  }
-  tbody.innerHTML = files.map((file, idx) => {
-    const isSelected = selectedFile?.path === file.path;
-    const typeInfo = getFileTypeInfo(file.path);
-    const isStarred = starredPaths.has(file.path);
-    let badgeClass = "";
-    let badgeChar = "✓";
-    let statusText = "Synced";
-    if (file.status === "conflicted") {
-      badgeClass = "conflict";
-      badgeChar = "!";
-      statusText = "Conflicted";
-    } else if (file.status === "pending_upload") {
-      badgeClass = "syncing";
-      badgeChar = "⟳";
-      statusText = "Syncing";
-    }
-    const displayPath = currentDirectory && file.path.startsWith(`${currentDirectory}/`) ? file.path.slice(currentDirectory.length + 1) : file.path;
-    return `
-      <tr class="file-row ${isSelected ? "selected" : ""}" data-idx="${idx}" data-path="${escapeHtml(file.path)}">
-        <td>
-          <div class="file-name-cell">
-            <span class="chevron-icon" style="color: ${isStarred ? "#fbbf24" : "#cbd5e1"}; font-size: 0.9rem;" title="${isStarred ? "Starred" : "Unstarred"}">${isStarred ? "★" : "▶"}</span>
-            <div class="icon-with-sync-badge">
-              ${typeInfo.iconSvg}
-              <div class="sync-badge-overlay ${badgeClass}">${badgeChar}</div>
-            </div>
-            <span class="file-title-text">${escapeHtml(displayPath)}</span>
-          </div>
-        </td>
-        <td>
-          <span class="file-type-text">${typeInfo.label}</span>
-        </td>
-        <td>
-          <span class="file-size-text">${formatBytes(file.size)}</span>
-        </td>
-        <td>
-          <span style="font-size: 0.8rem; color: ${file.status === "conflicted" ? "var(--status-conflict)" : "var(--status-synced)"}; font-weight: 500;">
-            ${statusText}
-          </span>
-        </td>
-      </tr>
-    `;
-  }).join("");
-  tbody.querySelectorAll(".file-row").forEach((row) => {
-    row.addEventListener("click", () => {
-      const path = row.getAttribute("data-path");
-      const item = files.find((f) => f.path === path);
-      if (item)
-        selectFile(item);
-    });
-    row.addEventListener("dblclick", () => {
-      const path = row.getAttribute("data-path");
-      const item = files.find((f) => f.path === path);
-      if (item) {
-        if (item.path.includes("/")) {
-          const parts = item.path.split("/");
-          if (parts.length > 1 && item.size === 0) {
-            enterDirectory(parts[0]);
+  var _Channel_instances, _Channel_onmessage, _Channel_nextMessageIndex, _Channel_pendingMessages, _Channel_messageEndIndex, _Channel_deliver, _Resource_rid, SERIALIZE_TO_IPC_FN = "__TAURI_TO_IPC_KEY__", Channel, Resource;
+  var init_core = __esm(() => {
+    init_tslib_es6();
+    Channel = class Channel {
+      constructor(onmessage) {
+        _Channel_instances.add(this);
+        _Channel_onmessage.set(this, undefined);
+        _Channel_nextMessageIndex.set(this, 0);
+        _Channel_pendingMessages.set(this, []);
+        _Channel_messageEndIndex.set(this, undefined);
+        __classPrivateFieldSet(this, _Channel_onmessage, onmessage || (() => {}), "f");
+        this.id = transformCallback((rawMessage) => {
+          const index = rawMessage.index;
+          if ("end" in rawMessage) {
+            if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
+              this.cleanupCallback();
+            } else {
+              __classPrivateFieldSet(this, _Channel_messageEndIndex, index, "f");
+            }
             return;
           }
+          const message = rawMessage.message;
+          if (index == __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")) {
+            __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message);
+            __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
+            while (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") in __classPrivateFieldGet(this, _Channel_pendingMessages, "f")) {
+              const message2 = __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
+              __classPrivateFieldGet(this, _Channel_instances, "m", _Channel_deliver).call(this, message2);
+              delete __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f")];
+              __classPrivateFieldSet(this, _Channel_nextMessageIndex, __classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") + 1, "f");
+            }
+            if (__classPrivateFieldGet(this, _Channel_nextMessageIndex, "f") === __classPrivateFieldGet(this, _Channel_messageEndIndex, "f")) {
+              this.cleanupCallback();
+            }
+          } else {
+            __classPrivateFieldGet(this, _Channel_pendingMessages, "f")[index] = message;
+          }
+        });
+      }
+      cleanupCallback() {
+        window.__TAURI_INTERNALS__.unregisterCallback(this.id);
+      }
+      set onmessage(handler) {
+        __classPrivateFieldSet(this, _Channel_onmessage, handler, "f");
+      }
+      get onmessage() {
+        return __classPrivateFieldGet(this, _Channel_onmessage, "f");
+      }
+      [(_Channel_onmessage = new WeakMap, _Channel_nextMessageIndex = new WeakMap, _Channel_pendingMessages = new WeakMap, _Channel_messageEndIndex = new WeakMap, _Channel_instances = new WeakSet, _Channel_deliver = function _Channel_deliver2(message) {
+        try {
+          __classPrivateFieldGet(this, _Channel_onmessage, "f").call(this, message);
+        } catch (error) {
+          queueMicrotask(() => {
+            throw error;
+          });
         }
-        tauriInvoke("open_file", { path: item.path }).catch(() => {
-          tauriInvoke("open_sync_folder");
+      }, SERIALIZE_TO_IPC_FN)]() {
+        return `__CHANNEL__:${this.id}`;
+      }
+      toJSON() {
+        return this[SERIALIZE_TO_IPC_FN]();
+      }
+    };
+    Resource = class Resource {
+      get rid() {
+        return __classPrivateFieldGet(this, _Resource_rid, "f");
+      }
+      constructor(rid) {
+        _Resource_rid.set(this, undefined);
+        __classPrivateFieldSet(this, _Resource_rid, rid, "f");
+      }
+      async close() {
+        return invoke("plugin:resources|close", {
+          rid: this.rid
         });
       }
-    });
-    row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const path = row.getAttribute("data-path");
-      const item = files.find((f) => f.path === path);
-      if (item) {
-        selectFile(item);
-        showContextMenu(e.clientX, e.clientY, item);
+      async[(_Resource_rid = new WeakMap, Symbol.asyncDispose)]() {
+        await this.close();
       }
-    });
+    };
   });
-}
-function renderFileGrid(files) {
-  const grid = document.getElementById("file-grid");
-  if (!grid)
-    return;
-  if (files.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
-        <div style="font-size: 1.1rem; font-weight: 600; color: var(--text-dark); margin-bottom: 0.5rem;">
-          No files in this view
-        </div>
-      </div>
-    `;
-    return;
-  }
-  grid.innerHTML = files.map((file) => {
-    const isSelected = selectedFile?.path === file.path;
-    const typeInfo = getFileTypeInfo(file.path);
-    const isStarred = starredPaths.has(file.path);
-    let badgeClass = "";
-    let badgeChar = "✓";
-    if (file.status === "conflicted") {
-      badgeClass = "conflict";
-      badgeChar = "!";
-    } else if (file.status === "pending_upload") {
-      badgeClass = "syncing";
-      badgeChar = "⟳";
-    }
-    const displayPath = currentDirectory && file.path.startsWith(`${currentDirectory}/`) ? file.path.slice(currentDirectory.length + 1) : file.path;
-    return `
-      <div class="grid-card ${isSelected ? "selected" : ""}" data-path="${escapeHtml(file.path)}">
-        <div class="grid-card-icon">
-          ${typeInfo.iconSvg.replace('width="20" height="20"', 'width="42" height="42"')}
-          <div class="sync-badge-overlay ${badgeClass}" style="bottom: 0; right: 0;">${badgeChar}</div>
-        </div>
-        <div class="grid-card-title" title="${escapeHtml(file.path)}">
-          ${isStarred ? "★ " : ""}${escapeHtml(displayPath)}
-        </div>
-        <div class="grid-card-meta">
-          ${formatBytes(file.size)}
-        </div>
-      </div>
-    `;
-  }).join("");
-  grid.querySelectorAll(".grid-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const path = card.getAttribute("data-path");
-      const item = files.find((f) => f.path === path);
-      if (item)
-        selectFile(item);
-    });
-    card.addEventListener("dblclick", () => {
-      const path = card.getAttribute("data-path");
-      const item = files.find((f) => f.path === path);
-      if (item) {
-        tauriInvoke("open_file", { path: item.path }).catch(() => {
-          tauriInvoke("open_sync_folder");
-        });
-      }
-    });
-    card.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      const path = card.getAttribute("data-path");
-      const item = files.find((f) => f.path === path);
-      if (item) {
-        selectFile(item);
-        showContextMenu(e.clientX, e.clientY, item);
-      }
-    });
-  });
-}
-function renderActiveViews() {
-  const filtered = getFilteredAndSortedFiles();
-  const tableView = document.getElementById("table-view-container");
-  const gridView = document.getElementById("file-grid");
-  const activityView = document.getElementById("activity-view-container");
-  if (activeNav === "activity") {
-    if (tableView)
-      tableView.style.display = "none";
-    if (gridView)
-      gridView.style.display = "none";
-    if (activityView)
-      activityView.style.display = "block";
-    renderActivityFeed();
-    return;
-  }
-  if (activityView)
-    activityView.style.display = "none";
-  if (currentViewMode === "list") {
-    if (tableView)
-      tableView.style.display = "block";
-    if (gridView)
-      gridView.style.display = "none";
-    renderFileTable(filtered);
-  } else {
-    if (tableView)
-      tableView.style.display = "none";
-    if (gridView)
-      gridView.style.display = "grid";
-    renderFileGrid(filtered);
-  }
-  renderBreadcrumbs();
-  const statFiles = document.getElementById("stat-files");
-  if (statFiles)
-    statFiles.textContent = String(filtered.length);
-}
-function renderBreadcrumbs() {
-  const container = document.getElementById("breadcrumb-container");
-  if (!container)
-    return;
-  if (!currentDirectory) {
-    container.innerHTML = `<span class="breadcrumb-item root active" data-path="">\uD83C\uDFF4‍☠️ Vault</span>`;
-    return;
-  }
-  const parts = currentDirectory.split("/");
-  let html = `<span class="breadcrumb-item root" data-path="">\uD83C\uDFF4‍☠️ Vault</span>`;
-  let accumulated = "";
-  parts.forEach((p, idx) => {
-    accumulated = accumulated ? `${accumulated}/${p}` : p;
-    const isLast = idx === parts.length - 1;
-    html += `
-      <span class="breadcrumb-separator">/</span>
-      <span class="breadcrumb-item ${isLast ? "active" : ""}" data-path="${escapeHtml(accumulated)}">${escapeHtml(p)}</span>
-    `;
-  });
-  container.innerHTML = html;
-  container.querySelectorAll(".breadcrumb-item").forEach((el) => {
-    el.addEventListener("click", () => {
-      const p = el.getAttribute("data-path") || "";
-      enterDirectory(p);
-    });
-  });
-}
-function enterDirectory(dir) {
-  currentDirectory = dir;
-  if (navHistory[navHistoryIndex] !== dir) {
-    navHistory = navHistory.slice(0, navHistoryIndex + 1);
-    navHistory.push(dir);
-    navHistoryIndex = navHistory.length - 1;
-  }
-  renderActiveViews();
-}
-function renderActivityFeed() {
-  const stream = document.getElementById("activity-log-stream");
-  if (!stream)
-    return;
-  if (activityLogs.length === 0) {
-    stream.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No recent activities</div>`;
-    return;
-  }
-  stream.innerHTML = activityLogs.map((log) => {
-    let icon = "⚓";
-    if (log.type === "upload")
-      icon = "↑";
-    if (log.type === "download")
-      icon = "↓";
-    if (log.type === "conflict")
-      icon = "⚠️";
-    return `
-      <div class="activity-log-card">
-        <div class="activity-log-icon">${icon}</div>
-        <div class="activity-log-info">
-          <div class="activity-log-title">${escapeHtml(log.title)}</div>
-          <div class="activity-log-sub">${escapeHtml(log.subtitle)}</div>
-        </div>
-        <div class="activity-log-time">${escapeHtml(log.time)}</div>
-      </div>
-    `;
-  }).join("");
-}
-function selectFile(file) {
-  selectedFile = file;
-  document.querySelectorAll(".file-row").forEach((row) => {
-    const path = row.getAttribute("data-path");
-    row.classList.toggle("selected", path === file.path);
-  });
-  document.querySelectorAll(".grid-card").forEach((card) => {
-    const path = card.getAttribute("data-path");
-    card.classList.toggle("selected", path === file.path);
-  });
-  const typeInfo = getFileTypeInfo(file.path);
-  const nameEl = document.getElementById("inspector-file-name");
-  const metaEl = document.getElementById("inspector-file-meta");
-  const iconContainer = document.getElementById("inspector-icon-container");
-  const s3Target = document.getElementById("inspector-s3-target");
-  const hashEl = document.getElementById("inspector-hash");
-  const blobEl = document.getElementById("inspector-blob-id");
-  const conflictBanner = document.getElementById("inspector-conflict-banner");
-  const starBtn = document.getElementById("inspector-star-btn");
-  if (nameEl)
-    nameEl.textContent = file.path;
-  if (metaEl) {
-    const sizeStr = file.size > 0 ? formatBytes(file.size) : "Folder";
-    metaEl.textContent = `${sizeStr} • Verified AES-256-GCM`;
-  }
-  if (iconContainer) {
-    iconContainer.innerHTML = typeInfo.iconSvg.replace('width="20" height="20"', 'width="56" height="56"');
-  }
-  if (hashEl) {
-    hashEl.textContent = file.hash ? `${file.hash.slice(0, 16)}...` : "Verified SHA-256";
-    hashEl.title = file.hash || "";
-  }
-  if (blobEl) {
-    blobEl.textContent = file.blob_id ? `${file.blob_id.slice(0, 16)}...` : "Encrypted blob";
-    blobEl.title = file.blob_id ? `blobs/${file.blob_id}` : "";
-  }
-  if (s3Target) {
-    const bucket = currentVaultStatus?.bucket || "my-renegadebox-bucket";
-    s3Target.textContent = file.blob_id ? `s3://${bucket}/blobs/${file.blob_id.slice(0, 12)}...` : `s3://${bucket}/${file.path}`;
-    s3Target.title = file.blob_id ? `s3://${bucket}/blobs/${file.blob_id}` : "";
-  }
-  if (conflictBanner) {
-    conflictBanner.style.display = file.status === "conflicted" ? "block" : "none";
-  }
-  if (starBtn) {
-    const isStarred = starredPaths.has(file.path);
-    starBtn.textContent = isStarred ? "★ Starred" : "⭐ Star";
-  }
-}
-async function refreshVaultStatus() {
-  try {
-    const status = await tauriInvoke("get_vault_status");
-    currentVaultStatus = status;
-    const statStorage = document.getElementById("stat-storage");
-    const statPending = document.getElementById("stat-pending");
-    const sidebarBucket = document.getElementById("sidebar-bucket-name");
-    const sidebarUser = document.getElementById("sidebar-user-name");
-    const sidebarDevice = document.getElementById("sidebar-device-id");
-    const keystoreEl = document.getElementById("inspector-keystore");
-    const meterFill = document.getElementById("storage-meter-fill");
-    if (statStorage)
-      statStorage.textContent = formatBytes(status.total_bytes);
-    if (statPending)
-      statPending.textContent = String(status.pending_changes);
-    if (meterFill) {
-      const pct = Math.min(100, Math.max(8, Math.round(status.total_bytes / (5 * 1024 * 1024 * 1024) * 100)));
-      meterFill.style.width = `${pct}%`;
-    }
-    if (sidebarBucket && status.bucket)
-      sidebarBucket.textContent = status.bucket;
-    if (sidebarUser && status.device_name)
-      sidebarUser.textContent = status.device_name;
-    if (sidebarDevice)
-      sidebarDevice.textContent = status.device_id ? `Device: ${status.device_id.slice(0, 8)}...` : "Zero-Knowledge Sync";
-    if (keystoreEl && status.key_store)
-      keystoreEl.textContent = status.key_store;
-    isSyncPaused = await tauriInvoke("is_sync_paused").catch(() => false);
-    updatePauseUI(isSyncPaused);
-  } catch (err) {
-    console.error("Failed to load vault status:", err);
-  }
-}
-function updatePauseUI(paused) {
-  isSyncPaused = paused;
-  const pauseBtn = document.getElementById("pause-sync-btn");
-  const pausedBadge = document.getElementById("sync-paused-badge");
-  const pausedIndicator = document.getElementById("toolbar-paused-indicator");
-  const footerStatus = document.getElementById("footer-sync-status");
-  if (pauseBtn) {
-    pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
-  }
-  if (pausedBadge) {
-    pausedBadge.style.display = paused ? "inline-block" : "none";
-  }
-  if (pausedIndicator) {
-    pausedIndicator.style.display = paused ? "inline" : "none";
-  }
-  if (footerStatus) {
-    footerStatus.textContent = paused ? "⏸ Sync Paused" : "✓ Connected to S3";
-    footerStatus.style.color = paused ? "var(--status-pending)" : "var(--status-synced)";
-  }
-}
-async function refreshFilesList() {
-  try {
-    const hasTauri = typeof window !== "undefined" && (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__));
-    let files = await tauriInvoke("list_synced_files");
-    if (!hasTauri && files.length === 0) {
-      files = [
-        { path: "welcome.txt", size: 124, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "Documents/Taxes-2026.pdf", size: 3421800, status: "synced", mtime_ns: Date.now() * 1e6 },
-        { path: "Projects/renegadebox/spec.md", size: 18450, status: "synced", mtime_ns: Date.now() * 1e6 }
-      ];
-    }
-    allFiles = files;
-    renderActiveViews();
-    if (!selectedFile && allFiles.length > 0) {
-      selectFile(allFiles[0]);
-    } else if (selectedFile) {
-      const match = allFiles.find((f) => f.path === selectedFile?.path);
-      if (match)
-        selectFile(match);
-    }
-  } catch (err) {
-    console.error("Failed to list files:", err);
-  }
-}
-async function handleSyncNow() {
-  const syncBtn = document.getElementById("sync-now-btn");
-  if (syncBtn) {
-    syncBtn.disabled = true;
-    syncBtn.textContent = "⚔️ Hoisting...";
-  }
-  logActivity("Manual sync triggered", "Scanning local folder -> encrypting -> pushing to S3", "upload");
-  try {
-    const result = await tauriInvoke("trigger_sync");
-    logActivity(result.success ? "⚓ Booty stashed & synced" : "⚠️ Storm warning", result.message, result.success ? "system" : "conflict");
-  } catch (err) {
-    logActivity("⚠️ Sync error", String(err), "conflict");
-  } finally {
-    if (syncBtn) {
-      syncBtn.disabled = false;
-      syncBtn.textContent = "⟳ Sync Now";
-    }
-    await refreshVaultStatus();
-    await refreshFilesList();
-  }
-}
-async function handleTogglePause() {
-  try {
-    if (isSyncPaused) {
-      await tauriInvoke("resume_sync");
-      logActivity("▶ Sync resumed", "Background file watcher and automatic S3 sync enabled", "system");
-      updatePauseUI(false);
-    } else {
-      await tauriInvoke("pause_sync");
-      logActivity("⏸ Sync paused", "Background automatic synchronization suspended", "system");
-      updatePauseUI(true);
-    }
-  } catch (err) {
-    console.error("Failed to toggle sync pause:", err);
-  }
-}
-async function handleRenameFile(file) {
-  const currentName = file.path.split("/").pop() || file.path;
-  const newName = prompt(`Enter new name for "${currentName}":`, currentName);
-  if (!newName || newName.trim() === currentName)
-    return;
-  const parts = file.path.split("/");
-  parts.pop();
-  const newPath = parts.length > 0 ? `${parts.join("/")}/${newName.trim()}` : newName.trim();
-  try {
-    await tauriInvoke("rename_file", { oldPath: file.path, newPath });
-    logActivity(`\uD83C\uDFF7️ Renamed "${currentName}"`, `New path: ${newPath}`, "system");
-    await refreshFilesList();
-    const updated = allFiles.find((f) => f.path === newPath);
-    if (updated)
-      selectFile(updated);
-  } catch (err) {
-    alert("Could not rename file: " + err);
-  }
-}
-async function handleDeleteFile(file) {
-  const confirmDel = confirm(`Move "${file.path}" to macOS Trash?
 
-This will also remove it from your S3 vault.`);
-  if (!confirmDel)
-    return;
-  try {
-    await tauriInvoke("delete_file", { path: file.path });
-    logActivity(`\uD83D\uDDD1️ Moved to Trash`, file.path, "system");
-    selectedFile = null;
-    await refreshFilesList();
-    await refreshVaultStatus();
-  } catch (err) {
-    alert("Failed to delete file: " + err);
+  // node_modules/@tauri-apps/api/event.js
+  var exports_event = {};
+  __export(exports_event, {
+    once: () => once,
+    listen: () => listen,
+    emitTo: () => emitTo,
+    emit: () => emit,
+    TauriEvent: () => TauriEvent
+  });
+  async function _unlisten(event, eventId) {
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, eventId);
+    await invoke("plugin:event|unlisten", {
+      event,
+      eventId
+    });
   }
-}
-async function handleExportCopy(file) {
-  try {
-    const dst = await tauriInvoke("export_file_copy", { path: file.path });
-    logActivity(`\uD83D\uDCBE Exported copy to Downloads`, dst, "download");
-    alert(`File exported successfully to:
-${dst}`);
-  } catch (err) {
-    alert("Export failed: " + err);
+  async function listen(event, handler, options) {
+    var _a;
+    const target = typeof (options === null || options === undefined ? undefined : options.target) === "string" ? { kind: "AnyLabel", label: options.target } : (_a = options === null || options === undefined ? undefined : options.target) !== null && _a !== undefined ? _a : { kind: "Any" };
+    return invoke("plugin:event|listen", {
+      event,
+      target,
+      handler: transformCallback(handler)
+    }).then((eventId) => {
+      return async () => _unlisten(event, eventId);
+    });
   }
-}
-function toggleStar(path) {
-  if (starredPaths.has(path)) {
-    starredPaths.delete(path);
-  } else {
-    starredPaths.add(path);
+  async function once(event, handler, options) {
+    return listen(event, (eventData) => {
+      _unlisten(event, eventData.id);
+      handler(eventData);
+    }, options);
   }
-  saveStarred();
-  if (selectedFile?.path === path)
-    selectFile(selectedFile);
-  renderActiveViews();
-}
-var activeConflictedFile = null;
-function openConflictModal(file) {
-  activeConflictedFile = file;
-  const modal = document.getElementById("conflict-modal");
-  const fileName = document.getElementById("conflict-file-name");
-  const fileDetails = document.getElementById("conflict-file-details");
-  if (fileName)
-    fileName.textContent = file.path;
-  if (fileDetails)
-    fileDetails.textContent = `Size: ${formatBytes(file.size)} • Status: Conflicted copy`;
-  if (modal)
-    modal.classList.add("open");
-}
-function closeConflictModal() {
-  const modal = document.getElementById("conflict-modal");
-  if (modal)
-    modal.classList.remove("open");
-  activeConflictedFile = null;
-}
-async function resolveConflict(resolution) {
-  if (!activeConflictedFile)
-    return;
-  try {
-    await tauriInvoke("resolve_conflict", { path: activeConflictedFile.path, resolution });
-    logActivity(`⚔️ Resolved conflict (${resolution})`, activeConflictedFile.path, "conflict");
-    closeConflictModal();
-    await refreshFilesList();
-    await refreshVaultStatus();
-  } catch (err) {
-    alert("Failed to resolve conflict: " + err);
+  async function emit(event, payload) {
+    await invoke("plugin:event|emit", {
+      event,
+      payload
+    });
   }
-}
-async function openHistoryModal(file) {
-  const modal = document.getElementById("history-modal");
-  const title = document.getElementById("history-file-title");
-  const container = document.getElementById("history-list-container");
-  if (title)
-    title.textContent = file.path;
-  if (modal)
-    modal.classList.add("open");
-  if (container) {
-    container.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">Fetching journal history...</div>`;
-    try {
-      const revisions = await tauriInvoke("get_file_history", { path: file.path });
-      if (revisions.length === 0) {
-        container.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">No recorded journal revisions for this file.</div>`;
-        return;
+  async function emitTo(target, event, payload) {
+    const eventTarget = typeof target === "string" ? { kind: "AnyLabel", label: target } : target;
+    await invoke("plugin:event|emit_to", {
+      target: eventTarget,
+      event,
+      payload
+    });
+  }
+  var TauriEvent;
+  var init_event = __esm(() => {
+    init_core();
+    (function(TauriEvent2) {
+      TauriEvent2["WINDOW_RESIZED"] = "tauri://resize";
+      TauriEvent2["WINDOW_MOVED"] = "tauri://move";
+      TauriEvent2["WINDOW_CLOSE_REQUESTED"] = "tauri://close-requested";
+      TauriEvent2["WINDOW_DESTROYED"] = "tauri://destroyed";
+      TauriEvent2["WINDOW_FOCUS"] = "tauri://focus";
+      TauriEvent2["WINDOW_BLUR"] = "tauri://blur";
+      TauriEvent2["WINDOW_SCALE_FACTOR_CHANGED"] = "tauri://scale-change";
+      TauriEvent2["WINDOW_THEME_CHANGED"] = "tauri://theme-changed";
+      TauriEvent2["WINDOW_CREATED"] = "tauri://window-created";
+      TauriEvent2["WINDOW_SUSPENDED"] = "tauri://suspended";
+      TauriEvent2["WINDOW_RESUMED"] = "tauri://resumed";
+      TauriEvent2["WEBVIEW_CREATED"] = "tauri://webview-created";
+      TauriEvent2["DRAG_ENTER"] = "tauri://drag-enter";
+      TauriEvent2["DRAG_OVER"] = "tauri://drag-over";
+      TauriEvent2["DRAG_DROP"] = "tauri://drag-drop";
+      TauriEvent2["DRAG_LEAVE"] = "tauri://drag-leave";
+    })(TauriEvent || (TauriEvent = {}));
+  });
+
+  // src/lib/ipc.ts
+  init_core();
+  function hasTauri() {
+    return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__ || window.__TAURI__);
+  }
+  var MOCK_SCENARIOS = ["ok", "syncing", "paused", "conflicts", "error", "setup"];
+  function mockScenarioFromUrl() {
+    if (typeof location === "undefined")
+      return "ok";
+    const s = new URLSearchParams(location.search).get("state");
+    return s && MOCK_SCENARIOS.includes(s) ? s : "ok";
+  }
+  async function invoke2(cmd, args) {
+    if (hasTauri())
+      return invoke(cmd, args);
+    return mockInvoke(cmd, args, mockScenarioFromUrl());
+  }
+  var MIN = 60000;
+  var HOUR = 60 * MIN;
+  var DAY = 24 * HOUR;
+  function sampleRecent(now) {
+    const f = (path, ago) => {
+      const i = path.lastIndexOf("/");
+      return { path, name: i < 0 ? path : path.slice(i + 1), folder: i < 0 ? "" : path.slice(0, i), modified_ms: now - ago };
+    };
+    return [
+      f("Work/Q3 budget.xlsx", 2 * MIN),
+      f("Work/Client proposal - Hartley.docx", 14 * MIN),
+      f("Home/Kitchen remodel quote.pdf", 52 * MIN),
+      f("Photos/2026/IMG_2041.jpeg", 3 * HOUR),
+      f("Photos/2026/IMG_2040.jpeg", 3 * HOUR + 2 * MIN),
+      f("Notes.txt", 5 * HOUR),
+      f("Home/Insurance/Policy renewal 2026.pdf", 26 * HOUR),
+      f("Work/Invoices/Invoice 1042.pdf", 2 * DAY),
+      f("Shabbat menu.docx", 4 * DAY),
+      f("Taxes/2025 return.pdf", 12 * DAY)
+    ];
+  }
+  var SAMPLE_CONFLICTS = (now) => [
+    {
+      path: "Work/Q3 budget (conflicted copy from My-iMac 2026-10-15 9f3a12bc).xlsx",
+      original_name: "Q3 budget.xlsx",
+      folder: "Work",
+      device: "My-iMac",
+      modified_ms: now - 6 * MIN
+    },
+    {
+      path: "Notes (conflicted copy from My-iMac 2026-10-15 47de0a91).txt",
+      original_name: "Notes.txt",
+      folder: "",
+      device: "My-iMac",
+      modified_ms: now - 40 * MIN
+    }
+  ];
+  var mockPaused = null;
+  var mockKeyStore = "System keychain";
+  var mockAutostart = true;
+  async function mockInvoke(cmd, args, scenario) {
+    const now = Date.now();
+    const initialized = scenario !== "setup";
+    const out = (() => {
+      switch (cmd) {
+        case "get_sync_overview": {
+          const paused = mockPaused ?? scenario === "paused";
+          const o = {
+            initialized,
+            paused,
+            syncing: scenario === "syncing",
+            pending: scenario === "syncing" ? 3 : scenario === "paused" ? 2 : 0,
+            conflicts: scenario === "conflicts" ? 2 : 0,
+            error: scenario === "error" ? "LIST rb/journal/: dispatch failure: io error: Connection refused" : null
+          };
+          return o;
+        }
+        case "get_vault_status": {
+          const s = {
+            initialized,
+            folder: initialized ? "/Users/me/RenegadeBox" : null,
+            bucket: initialized ? "my-files" : null,
+            region: initialized ? "us-east-1" : null,
+            endpoint: initialized ? "https://s3.wasabisys.com" : null,
+            device_id: initialized ? "68a3c8a0-c930-4984-bc66-079164e213f6" : null,
+            device_name: initialized ? "My-MacBook-Pro" : null,
+            hub_url: null,
+            key_store: initialized ? mockKeyStore : null,
+            total_files: 214,
+            pending_changes: 0,
+            total_bytes: 1843200000
+          };
+          return s;
+        }
+        case "list_recent_files":
+          return initialized ? sampleRecent(now).slice(0, Number(args?.limit ?? 10)) : [];
+        case "list_conflicts":
+          return scenario === "conflicts" ? SAMPLE_CONFLICTS(now) : [];
+        case "pause_sync":
+          mockPaused = true;
+          return true;
+        case "resume_sync":
+          mockPaused = false;
+          return false;
+        case "is_sync_paused":
+          return mockPaused ?? scenario === "paused";
+        case "is_autostart_enabled":
+          return mockAutostart;
+        case "set_autostart_enabled":
+          mockAutostart = Boolean(args?.enabled);
+          return mockAutostart;
+        case "set_key_store":
+          mockKeyStore = args?.useKeychain ? "System keychain" : "Unprotected file (readable by any app running as you)";
+          return args?.useKeychain ? "System keychain" : "Unprotected file";
+        case "get_ignored_patterns":
+          return [".DS_Store", "Thumbs.db", "*.tmp", ".git/", "node_modules/"];
+        case "setup_vault":
+          return new Promise((resolve) => setTimeout(() => resolve({ initialized: true }), 900));
+        default:
+          console.info(`[preview] ${cmd}`, args ?? "");
+          return null;
       }
-      container.innerHTML = revisions.map((rev) => `
-        <div style="background: #ffffff; border: 1px solid var(--border-light); border-radius: 6px; padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-dark); display: flex; align-items: center; gap: 0.4rem;">
-              <span>${escapeHtml(rev.action)}</span>
-              ${rev.is_current ? '<span style="background: #e0f2fe; color: #0284c7; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;">CURRENT</span>' : ""}
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
-              Device: <strong>${escapeHtml(rev.device_name)}</strong> • Lamport Seq: #${rev.lamport}
-            </div>
-            <div style="font-family: var(--font-mono); font-size: 0.68rem; color: #64748b; margin-top: 2px;">
-              SHA: ${escapeHtml(rev.hash.slice(0, 18))}...
-            </div>
-          </div>
-          <div style="font-size: 0.75rem; color: var(--text-muted); text-align: right;">
-            ${escapeHtml(rev.date_str)}
+    })();
+    return await out;
+  }
+
+  // src/lib/format.ts
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function relativeTime(ms, now = Date.now()) {
+    const diff = Math.max(0, now - ms);
+    const min = Math.floor(diff / 60000);
+    if (min < 1)
+      return "Just now";
+    if (min < 60)
+      return `${min} min ago`;
+    const hours = Math.floor(min / 60);
+    if (hours < 24)
+      return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+    const days = Math.floor(hours / 24);
+    if (days === 1)
+      return "Yesterday";
+    if (days < 7)
+      return `${days} days ago`;
+    const d = new Date(ms);
+    return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  }
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function plural(n, one, many) {
+    return `${n} ${n === 1 ? one : many}`;
+  }
+
+  // src/lib/icons.ts
+  var svg = (body, size = 16) => `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+  var icons = {
+    box: (s) => svg('<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/>', s),
+    check: (s) => svg('<circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/>', s),
+    sync: (s) => svg('<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/>', s),
+    pause: (s) => svg('<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>', s),
+    play: (s) => svg('<path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z"/>', s),
+    alert: (s) => svg('<path d="M12 3.5 2.8 19.5a1 1 0 0 0 .87 1.5h16.66a1 1 0 0 0 .87-1.5L12 3.5z"/><path d="M12 10v4.5"/><path d="M12 17.5h.01"/>', s),
+    offline: (s) => svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5h.01"/>', s),
+    folder: (s) => svg('<path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.3l2 2h8.7A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/>', s),
+    gear: (s) => svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>', s),
+    file: (s) => svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>', s),
+    image: (s) => svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m20.5 16-4.5-4.5-8.5 8"/>', s),
+    doc: (s) => svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 16.5h6"/>', s),
+    sheet: (s) => svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M4 9.5h16M4 15h16M10 9.5v11"/>', s),
+    reveal: (s) => svg('<circle cx="11" cy="11" r="6"/><path d="m20 20-4.35-4.35"/>', s),
+    back: (s) => svg('<path d="m15 18-6-6 6-6"/>', s),
+    chevron: (s) => svg('<path d="m9 18 6-6-6-6"/>', s),
+    lock: (s) => svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>', s)
+  };
+  function fileIcon(name) {
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "";
+    if (["jpg", "jpeg", "png", "gif", "heic", "webp", "tiff", "svg"].includes(ext))
+      return icons.image(18);
+    if (["xls", "xlsx", "csv", "numbers"].includes(ext))
+      return icons.sheet(18);
+    if (["doc", "docx", "pdf", "txt", "md", "pages", "rtf"].includes(ext))
+      return icons.doc(18);
+    return icons.file(18);
+  }
+
+  // src/lib/status.ts
+  function describeStatus(o) {
+    if (!o.initialized) {
+      return { kind: "setup", title: "Not set up yet", detail: "Connect your storage to start syncing." };
+    }
+    if (o.conflicts > 0) {
+      const title = o.conflicts === 1 ? "1 file needs your attention" : `${o.conflicts} files need your attention`;
+      return { kind: "attention", title, detail: "Two versions were saved at the same time." };
+    }
+    if (o.paused) {
+      return {
+        kind: "paused",
+        title: "Paused",
+        detail: o.pending > 0 ? `${plural(o.pending, "change", "changes")} will sync when you resume.` : "Changes will sync when you resume."
+      };
+    }
+    if (o.error) {
+      return { kind: "error", title: friendlyError(o.error), detail: "RenegadeBox will keep trying." };
+    }
+    if (o.syncing || o.pending > 0) {
+      const title = o.pending > 0 ? `Syncing ${plural(o.pending, "file", "files")}…` : "Syncing…";
+      return { kind: "syncing", title, detail: null };
+    }
+    return { kind: "ok", title: "Up to date", detail: "Your files are safely synced." };
+  }
+  var SYNC_FALLBACK = "Something went wrong while syncing. RenegadeBox will keep trying.";
+  function friendlyError(raw, fallback = SYNC_FALLBACK) {
+    const e = raw.toLowerCase();
+    if (e.includes("wrong passphrase")) {
+      return "That passphrase doesn't match the one this storage was set up with.";
+    }
+    if (e.includes("changed since this device was set up")) {
+      return "Your storage's passphrase settings changed. If you didn't change your passphrase, choose Reconnect in Settings.";
+    }
+    if (/invalidaccesskeyid|signaturedoesnotmatch|accessdenied|forbidden|\b403\b/.test(e)) {
+      return "Your storage provider didn't accept your access keys. Check them with Reconnect in Settings.";
+    }
+    if (e.includes("nosuchbucket")) {
+      return "Couldn't find that bucket. Check the bucket name with your storage provider.";
+    }
+    if (e.includes("keychain")) {
+      return "RenegadeBox couldn't read its keys from the system keychain. Choose Reconnect in Settings.";
+    }
+    if (e.includes("sync folder") && e.includes("missing")) {
+      return "Your RenegadeBox folder is missing. Is it on a drive that isn't plugged in?";
+    }
+    if (/dispatch|connect|timed out|timeout|dns|network|unreachable|io error|broken pipe/.test(e)) {
+      return "Can't reach your storage — check your internet connection";
+    }
+    return fallback;
+  }
+
+  // src/lib/actions.ts
+  function keyStoreKind(label) {
+    return label && label.toLowerCase().startsWith("unprotected") ? "file" : "keychain";
+  }
+  function changeKeyStore(invoke3, useKeychain) {
+    return invoke3("set_key_store", { useKeychain });
+  }
+  function resolveConflict(invoke3, item, resolution) {
+    return invoke3("resolve_conflict", { path: item.path, resolution });
+  }
+
+  // src/lib/setup.ts
+  var PROVIDERS = [
+    { id: "aws", label: "Amazon S3", region: "us-east-1", endpoint: "", endpointHint: "Leave this empty for Amazon S3." },
+    {
+      id: "r2",
+      label: "Cloudflare R2",
+      region: "auto",
+      endpoint: "https://ACCOUNT_ID.r2.cloudflarestorage.com",
+      endpointHint: "Replace ACCOUNT_ID with the ID shown on your Cloudflare R2 page."
+    },
+    { id: "wasabi", label: "Wasabi", region: "us-east-1", endpoint: "https://s3.wasabisys.com", endpointHint: "Use the address for your Wasabi region." },
+    {
+      id: "b2",
+      label: "Backblaze B2",
+      region: "us-west-004",
+      endpoint: "https://s3.us-west-004.backblazeb2.com",
+      endpointHint: "Shown as the S3 endpoint on your Backblaze bucket page."
+    },
+    {
+      id: "local",
+      label: "Local test server",
+      region: "us-east-1",
+      endpoint: "http://localhost:8333",
+      endpointHint: "The test server that runs on this Mac."
+    }
+  ];
+  function providerLabel(endpoint) {
+    const ep = (endpoint ?? "").trim().toLowerCase();
+    if (!ep)
+      return "Amazon S3";
+    if (ep.includes("localhost") || ep.includes("127.0.0.1"))
+      return "Local test server";
+    if (ep.includes("r2.cloudflarestorage.com"))
+      return "Cloudflare R2";
+    if (ep.includes("wasabisys.com"))
+      return "Wasabi";
+    if (ep.includes("backblazeb2.com"))
+      return "Backblaze B2";
+    if (ep.includes("amazonaws.com"))
+      return "Amazon S3";
+    try {
+      return new URL(ep).host;
+    } catch {
+      return ep;
+    }
+  }
+  function setupErrorStep(raw) {
+    const e = raw.toLowerCase();
+    if (e.includes("passphrase"))
+      return 3;
+    if (/access key|secret|invalidaccesskeyid|signaturedoesnotmatch|accessdenied|forbidden|keychain/.test(e))
+      return 2;
+    if (/bucket|region|endpoint|connect|dispatch|timed out|dns|network/.test(e))
+      return 1;
+    return 4;
+  }
+  var SETUP_STEPS = 4;
+  var MIN_PASSPHRASE = 12;
+  function validateSetupStep(step, v) {
+    switch (step) {
+      case 1:
+        if (!v.bucket.trim())
+          return "Enter the name of your bucket.";
+        if (!v.region.trim())
+          return "Enter the region. If you're not sure, use us-east-1.";
+        if (v.endpoint.includes("ACCOUNT_ID"))
+          return "Replace ACCOUNT_ID in the server address with your Cloudflare account ID.";
+        return null;
+      case 2:
+        if (!v.access_key_id.trim())
+          return "Enter the access key ID from your storage provider.";
+        if (!v.secret_access_key.trim())
+          return "Enter the secret access key from your storage provider.";
+        return null;
+      case 3:
+        if ([...v.passphrase].length < MIN_PASSPHRASE)
+          return `Your passphrase needs at least ${MIN_PASSPHRASE} characters.`;
+        if (v.passphrase !== v.passphrase_confirm)
+          return "The two passphrases don't match.";
+        return null;
+      case 4:
+        if (!v.folder.trim())
+          return "Choose where your RenegadeBox folder should live.";
+        if (v.device_name.includes("/"))
+          return "The name for this Mac can't contain a slash.";
+        return null;
+      default:
+        return null;
+    }
+  }
+
+  // src/lib/views.ts
+  var STATUS_ICON = {
+    ok: () => icons.check(20),
+    syncing: () => icons.sync(20),
+    paused: () => icons.pause(20),
+    attention: () => icons.alert(20),
+    error: () => icons.offline(20),
+    setup: () => icons.box(20)
+  };
+  function renderPopover({ overview, recent, now }) {
+    const st = describeStatus(overview);
+    const statusInner = `
+      <span class="status-icon">${STATUS_ICON[st.kind]()}</span>
+      <span class="status-text">
+        <span class="status-title">${escapeHtml(st.title)}</span>
+        ${st.detail ? `<span class="status-detail">${escapeHtml(st.detail)}</span>` : ""}
+      </span>`;
+    const status = st.kind === "attention" ? `<button id="status-line" class="status status-${st.kind} status-link" type="button">${statusInner}<span id="conflicts-link" class="status-chevron">${icons.chevron(16)}</span></button>` : `<div id="status-line" class="status status-${st.kind}" role="status">${statusInner}</div>`;
+    let body;
+    if (!overview.initialized) {
+      body = `
+      <div class="empty">
+        <p>RenegadeBox keeps a folder on this Mac in sync with storage you own.</p>
+        <button id="start-setup-btn" class="btn primary" type="button">Set up RenegadeBox…</button>
+      </div>`;
+    } else if (recent.length === 0) {
+      body = `<div class="empty"><p>Files you add to your RenegadeBox folder will show up here.</p></div>`;
+    } else {
+      body = `<ul class="recent-list">${recent.map((f, i) => recentRow(f, i, now)).join("")}</ul>`;
+    }
+    const pauseLabel = overview.paused ? "Resume" : "Pause";
+    return `
+    <section class="popover">
+      <header class="popover-header">${status}</header>
+      <div class="popover-body">
+        ${overview.initialized ? `<h2 class="section-label">Recent</h2>` : ""}
+        ${body}
+      </div>
+      <footer class="popover-footer">
+        <button id="open-folder-btn" class="footer-btn" type="button"${overview.initialized ? "" : " disabled"}>${icons.folder()}<span>Open folder</span></button>
+        <button id="pause-btn" class="footer-btn" type="button" aria-pressed="${overview.paused}"${overview.initialized ? "" : " disabled"}>${overview.paused ? icons.play() : icons.pause()}<span>${pauseLabel}</span></button>
+        <button id="settings-btn" class="footer-btn icon-only" type="button" title="Settings" aria-label="Settings">${icons.gear(18)}</button>
+      </footer>
+    </section>`;
+  }
+  function recentRow(f, i, now) {
+    const where = f.folder ? f.folder.split("/").pop() : "RenegadeBox";
+    return `
+    <li class="recent-row" data-index="${i}">
+      <button class="recent-open" type="button" data-action="open" data-index="${i}" title="Open ${escapeHtml(f.name)}">
+        <span class="file-icon">${fileIcon(f.name)}</span>
+        <span class="recent-text">
+          <span class="recent-name">${escapeHtml(f.name)}</span>
+          <span class="recent-meta">${escapeHtml(where)} · ${escapeHtml(relativeTime(f.modified_ms, now))}</span>
+        </span>
+      </button>
+      <button class="reveal-btn" type="button" data-action="reveal" data-index="${i}">Show in Finder</button>
+    </li>`;
+  }
+  function renderConflictList({ conflicts, now }) {
+    const rows = conflicts.map((c, i) => {
+      const who = c.device ? escapeHtml(c.device) : "Another device";
+      const where = c.folder ? ` in ${escapeHtml(c.folder.split("/").pop())}` : "";
+      const other = c.device ? `Use ${escapeHtml(c.device)}’s version` : "Use the other version";
+      return `
+      <li class="conflict" data-index="${i}">
+        <div class="conflict-head">
+          <span class="file-icon">${fileIcon(c.original_name)}</span>
+          <span class="recent-text">
+            <span class="recent-name">${escapeHtml(c.original_name)}</span>
+            <span class="recent-meta">${who} saved a different version${where} · ${escapeHtml(relativeTime(c.modified_ms, now))}</span>
+          </span>
+        </div>
+        <div class="conflict-actions">
+          <button class="btn primary" type="button" data-index="${i}" data-resolution="keep_both" title="Keep both files side by side">Keep both</button>
+          <button class="btn" type="button" data-index="${i}" data-resolution="keep_conflicted">${other}</button>
+          <button class="btn" type="button" data-index="${i}" data-resolution="keep_local">Keep current</button>
+        </div>
+      </li>`;
+    }).join("");
+    return `
+    <section class="popover">
+      <header class="popover-header subpage">
+        <button id="conflicts-back" class="icon-btn" type="button" aria-label="Back">${icons.back(18)}</button>
+        <h1 class="subpage-title">Needs your attention</h1>
+      </header>
+      <div class="popover-body">
+        <p class="explain">These files were changed in two places at once. RenegadeBox kept both versions so nothing was lost. Choose what to keep.</p>
+        ${conflicts.length ? `<ul class="conflict-list">${rows}</ul>` : `<div class="empty"><p>All sorted. Nothing needs your attention.</p></div>`}
+      </div>
+    </section>`;
+  }
+  function renderSettings({ status, autostart, ignored }) {
+    const kind = keyStoreKind(status.key_store);
+    const row = (label, value) => `<div class="kv"><span class="kv-label">${label}</span><span class="kv-value">${value}</span></div>`;
+    return `
+    <main class="settings">
+      <h1 class="window-title">Settings</h1>
+
+      <section class="group">
+        <h2 class="group-title">This Mac</h2>
+        <label class="field">
+          <span class="field-label">Device name</span>
+          <span class="field-row">
+            <input id="device-name-input" type="text" value="${escapeHtml(status.device_name ?? "")}" maxlength="128" autocomplete="off" spellcheck="false" />
+            <button id="device-name-save" class="btn" type="button">Save</button>
+          </span>
+          <span class="field-hint">Shown on your other devices when files change.</span>
+          <span id="device-name-message" class="inline-message" role="status"></span>
+        </label>
+        ${row("Folder", escapeHtml(status.folder ?? "Not set up"))}
+        <label class="switch-row">
+          <span>
+            <span class="field-label">Start at login</span>
+            <span class="field-hint">Keep your files in sync without opening RenegadeBox.</span>
+          </span>
+          <input id="autostart-toggle" class="switch" type="checkbox" role="switch"${autostart ? " checked" : ""} />
+        </label>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">Storage</h2>
+        ${row("Provider", escapeHtml(providerLabel(status.endpoint)))}
+        ${row("Bucket", escapeHtml(status.bucket ?? "—"))}
+        ${row("Region", escapeHtml(status.region ?? "—"))}
+        <div class="group-actions">
+          <button id="reconnect-btn" class="btn" type="button">Reconnect…</button>
+          <span class="field-hint">Enter your storage details and passphrase again. Your files stay where they are.</span>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">Key storage</h2>
+        <p class="field-hint">Where this Mac keeps the keys that unlock your files.</p>
+        <label class="radio-row">
+          <input type="radio" name="key-store" value="keychain"${kind === "keychain" ? " checked" : ""} />
+          <span>
+            <span class="field-label">System keychain (recommended)</span>
+            <span class="field-hint">Protected by macOS. Other apps can't read it without asking.</span>
+          </span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="key-store" value="file"${kind === "file" ? " checked" : ""} />
+          <span>
+            <span class="field-label">Unprotected file</span>
+            <span class="field-hint warn">Not recommended — any app running as you can read it.</span>
+          </span>
+        </label>
+        <div id="key-store-confirm" class="confirm" hidden>
+          <p>Store your keys in an unprotected file? Any app running as you can read it — and anyone who can read it can open your files.</p>
+          <div class="confirm-actions">
+            <button id="key-store-cancel" class="btn" type="button">Cancel</button>
+            <button id="key-store-confirm-btn" class="btn danger" type="button">Use unprotected file</button>
           </div>
         </div>
-      `).join("");
+        <p id="key-store-message" class="inline-message" role="status"></p>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">Ignored files</h2>
+        <p class="field-hint">Files and folders matching these names are never synced. One per line.</p>
+        <textarea id="ignored-input" rows="5" spellcheck="false">${escapeHtml(ignored.join(`
+`))}</textarea>
+        <div class="group-actions">
+          <button id="ignored-save" class="btn" type="button">Save</button>
+          <span id="ignored-message" class="inline-message" role="status"></span>
+        </div>
+      </section>
+
+      <footer class="settings-footer">
+        <button id="quit-btn" class="btn" type="button">Quit RenegadeBox</button>
+      </footer>
+    </main>`;
+  }
+  function renderSetup() {
+    const presets = PROVIDERS.map((p) => `<button class="preset" type="button" data-provider="${p.id}" aria-pressed="false">${escapeHtml(p.label)}</button>`).join("");
+    return `
+    <main class="setup">
+      <header class="setup-header">
+        <span class="setup-logo">${icons.box(28)}</span>
+        <div>
+          <h1 class="window-title">Set up RenegadeBox</h1>
+          <p class="field-hint">Your files are encrypted on this Mac before they leave it.</p>
+        </div>
+      </header>
+      <ol class="steps" aria-label="Setup progress">
+        <li data-step-dot="1">Storage</li><li data-step-dot="2">Keys</li><li data-step-dot="3">Passphrase</li><li data-step-dot="4">Folder</li>
+      </ol>
+
+      <form id="setup-form" novalidate>
+        <section class="step" data-step="1">
+          <h2 class="step-title">Where should your files be stored?</h2>
+          <p class="field-hint">Pick the company you rent storage from. You'll find these details in their dashboard.</p>
+          <div class="presets">${presets}</div>
+          <label class="field"><span class="field-label">Bucket name</span>
+            <input id="setup-bucket" name="bucket" type="text" placeholder="my-files" autocomplete="off" spellcheck="false" />
+            <span class="field-hint">The storage container you created for RenegadeBox.</span></label>
+          <label class="field"><span class="field-label">Region</span>
+            <input id="setup-region" name="region" type="text" autocomplete="off" spellcheck="false" /></label>
+          <label class="field"><span class="field-label">Server address</span>
+            <input id="setup-endpoint" name="endpoint" type="text" autocomplete="off" spellcheck="false" />
+            <span id="setup-endpoint-hint" class="field-hint"></span></label>
+        </section>
+
+        <section class="step" data-step="2" hidden>
+          <h2 class="step-title">Connect with your access keys</h2>
+          <p class="explain">Your storage provider gives you two keys when you allow an app to use your bucket: an <strong>access key ID</strong> (like a username) and a <strong>secret access key</strong> (like a password). For the local test server, type anything, e.g. dev.</p>
+          <label class="field"><span class="field-label">Access key ID</span>
+            <input id="setup-access-key" name="access_key_id" type="text" autocomplete="off" spellcheck="false" /></label>
+          <label class="field"><span class="field-label">Secret access key</span>
+            <input id="setup-secret" name="secret_access_key" type="password" autocomplete="off" />
+            <span class="field-hint">Kept in the system keychain on this Mac.</span></label>
+        </section>
+
+        <section class="step" data-step="3" hidden>
+          <h2 class="step-title">Choose a passphrase</h2>
+          <p class="explain">Your passphrase locks your files. Use at least ${MIN_PASSPHRASE} characters — a short sentence is easy to remember and hard to guess. If you already use RenegadeBox on another device, enter the same passphrase.</p>
+          <div class="warning" role="note">
+            ${icons.lock(18)}
+            <p><strong>Write it down and keep it somewhere safe.</strong> It can't be recovered — not by us, not by anyone. You'll need it on every new device you set up.</p>
+          </div>
+          <label class="field"><span class="field-label">Passphrase</span>
+            <input id="setup-passphrase" name="passphrase" type="password" autocomplete="new-password" /></label>
+          <label class="field"><span class="field-label">Type it again</span>
+            <input id="setup-passphrase-confirm" name="passphrase_confirm" type="password" autocomplete="new-password" /></label>
+          <p id="passphrase-meter" class="field-hint"></p>
+        </section>
+
+        <section class="step" data-step="4" hidden>
+          <h2 class="step-title">Almost done</h2>
+          <label class="field"><span class="field-label">RenegadeBox folder</span>
+            <input id="setup-folder" name="folder" type="text" value="~/RenegadeBox" autocomplete="off" spellcheck="false" />
+            <span class="field-hint">Anything you put in this folder is kept in sync.</span></label>
+          <label class="field"><span class="field-label">Name for this Mac (optional)</span>
+            <input id="setup-device-name" name="device_name" type="text" placeholder="Uses this Mac's name" autocomplete="off" spellcheck="false" /></label>
+        </section>
+
+        <section class="step" data-step="done" hidden>
+          <div class="done">
+            <span class="done-icon">${icons.check(40)}</span>
+            <h2 class="step-title">You're all set</h2>
+            <p class="explain">RenegadeBox is syncing your folder. Look for the box icon in the menu bar any time you want to check on it.</p>
+          </div>
+        </section>
+
+        <p id="setup-error" class="form-error" role="alert"></p>
+
+        <footer class="setup-footer">
+          <button id="setup-back" class="btn" type="button">Back</button>
+          <button id="setup-next" class="btn primary" type="submit">Continue</button>
+        </footer>
+      </form>
+    </main>`;
+  }
+
+  // src/main.ts
+  function currentView() {
+    const v = new URLSearchParams(location.search).get("view") ?? location.hash.replace("#", "");
+    return v === "settings" || v === "setup" ? v : "popover";
+  }
+  var root = () => document.getElementById("app");
+  var $ = (id) => document.getElementById(id);
+  var errText = (e) => typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+  async function onBackendEvents(names, handler) {
+    if (!hasTauri())
+      return;
+    try {
+      const { listen: listen2 } = await Promise.resolve().then(() => (init_event(), exports_event));
+      for (const n of names)
+        await listen2(n, handler);
     } catch (err) {
-      container.innerHTML = `<div style="color: #ef4444; padding: 1rem;">Failed to load history: ${err}</div>`;
+      console.warn("[RenegadeBox] could not subscribe to events", err);
     }
   }
-}
-function closeHistoryModal() {
-  const modal = document.getElementById("history-modal");
-  if (modal)
-    modal.classList.remove("open");
-}
-async function openSettingsModal() {
-  const modal = document.getElementById("settings-modal");
-  if (modal)
-    modal.classList.add("open");
-  if (currentVaultStatus) {
-    const devInput = document.getElementById("cfg-device-name-input");
-    const bucketInput = document.getElementById("cfg-bucket-input");
-    const regionInput = document.getElementById("cfg-region-input");
-    const endpointInput = document.getElementById("cfg-endpoint-input");
-    const hubInput = document.getElementById("cfg-hub-input");
-    if (devInput && currentVaultStatus.device_name)
-      devInput.value = currentVaultStatus.device_name;
-    if (bucketInput && currentVaultStatus.bucket)
-      bucketInput.value = currentVaultStatus.bucket;
-    if (regionInput && currentVaultStatus.region)
-      regionInput.value = currentVaultStatus.region;
-    if (endpointInput)
-      endpointInput.value = currentVaultStatus.endpoint || "";
-    if (hubInput && currentVaultStatus.hub_url)
-      hubInput.value = currentVaultStatus.hub_url;
-  }
-  try {
-    const patterns = await tauriInvoke("get_ignored_patterns");
-    const ignoreInput = document.getElementById("cfg-ignored-patterns-input");
-    if (ignoreInput && patterns)
-      ignoreInput.value = patterns.join(`
-`);
-  } catch (_) {}
-  try {
-    const autostart = await tauriInvoke("is_autostart_enabled");
-    const autostartToggle = document.getElementById("cfg-autostart-toggle");
-    if (autostartToggle)
-      autostartToggle.checked = autostart;
-  } catch (_) {}
-  const keystoreDesc = document.getElementById("cfg-keystore-desc");
-  const migrateBtn = document.getElementById("migrate-keystore-btn");
-  const warnEl = document.getElementById("keychain-prompt-warning");
-  const isKeychain = (currentVaultStatus?.key_store || "").toLowerCase().includes("keychain");
-  if (keystoreDesc) {
-    keystoreDesc.textContent = currentVaultStatus?.key_store || (isKeychain ? "System keychain" : "Unprotected file");
-  }
-  if (migrateBtn) {
-    migrateBtn.style.display = "block";
-    if (isKeychain) {
-      migrateBtn.textContent = "Switch to File Store";
-      migrateBtn.setAttribute("data-target", "file");
-    } else {
-      migrateBtn.textContent = "Switch to System Keychain";
-      migrateBtn.setAttribute("data-target", "keychain");
-    }
-  }
-  if (warnEl) {
-    warnEl.style.display = "block";
-    if (isKeychain) {
-      warnEl.innerHTML = "ℹ️ Stored in OS keychain. If macOS asks repeatedly during development, sign with an Apple Development identity or switch to file store.";
-    } else {
-      warnEl.innerHTML = "⚠️ Secrets are stored in an unprotected file (~/.renegadebox/secrets.insecure.json), readable by any app running as you.";
-    }
-  }
-}
-function closeSettingsModal() {
-  const modal = document.getElementById("settings-modal");
-  if (modal)
-    modal.classList.remove("open");
-}
-async function handleSaveSettings() {
-  const devInput = document.getElementById("cfg-device-name-input");
-  const bucketInput = document.getElementById("cfg-bucket-input");
-  const regionInput = document.getElementById("cfg-region-input");
-  const endpointInput = document.getElementById("cfg-endpoint-input");
-  const hubInput = document.getElementById("cfg-hub-input");
-  const ignoreInput = document.getElementById("cfg-ignored-patterns-input");
-  try {
-    await tauriInvoke("update_vault_config", {
-      payload: {
-        device_name: devInput?.value.trim() || undefined,
-        bucket: bucketInput?.value.trim() || undefined,
-        region: regionInput?.value.trim() || undefined,
-        endpoint: endpointInput?.value.trim() || undefined,
-        hub_url: hubInput?.value.trim() || undefined
-      }
-    });
-    if (ignoreInput) {
-      const patterns = ignoreInput.value.split(`
-`).map((s) => s.trim()).filter(Boolean);
-      await tauriInvoke("save_ignored_patterns", { patterns });
-    }
-    logActivity("⚙️ Preferences updated", "Vault configuration and ignore rules saved", "system");
-    await refreshVaultStatus();
-    closeSettingsModal();
-    showToast("Preferences saved successfully", "success");
-  } catch (err) {
-    showToast("Failed to save settings: " + err, "error");
-  }
-}
-var currentWizardStep = 1;
-function openSetupWizard() {
-  currentWizardStep = 1;
-  showWizardStep(1);
-  const errBanner = document.getElementById("wizard-error-banner");
-  if (errBanner) {
-    errBanner.style.display = "none";
-    errBanner.textContent = "";
-  }
-  const modal = document.getElementById("setup-wizard-modal");
-  if (modal)
-    modal.classList.add("open");
-}
-function closeSetupWizard() {
-  const modal = document.getElementById("setup-wizard-modal");
-  if (modal)
-    modal.classList.remove("open");
-}
-function showWizardStep(step) {
-  currentWizardStep = step;
-  const s1 = document.getElementById("wizard-step-1");
-  const s2 = document.getElementById("wizard-step-2");
-  const s3 = document.getElementById("wizard-step-3");
-  const backBtn = document.getElementById("wizard-back-btn");
-  const nextBtn = document.getElementById("wizard-next-btn");
-  const indicator = document.getElementById("wizard-step-indicator");
-  if (s1)
-    s1.style.display = step === 1 ? "block" : "none";
-  if (s2)
-    s2.style.display = step === 2 ? "block" : "none";
-  if (s3)
-    s3.style.display = step === 3 ? "block" : "none";
-  if (indicator)
-    indicator.textContent = `Step ${step} of 3`;
-  if (backBtn) {
-    backBtn.style.visibility = step === 1 ? "hidden" : "visible";
-  }
-  if (nextBtn) {
-    if (step === 3) {
-      nextBtn.textContent = "\uD83D\uDE80 Finish Setup & Hoist Sail";
-    } else {
-      nextBtn.textContent = "Continue →";
-    }
-  }
-}
-function setProviderPreset(preset) {
-  const buttons = document.querySelectorAll(".provider-preset-btn");
-  buttons.forEach((b) => {
-    b.classList.toggle("active", b.dataset.preset === preset);
-  });
-  const regionInput = document.getElementById("wizard-region-input");
-  const endpointInput = document.getElementById("wizard-endpoint-input");
-  if (preset === "aws") {
-    if (regionInput)
-      regionInput.value = "us-east-1";
-    if (endpointInput) {
-      endpointInput.value = "";
-      endpointInput.placeholder = "Leave empty for standard AWS S3";
-    }
-  } else if (preset === "r2") {
-    if (regionInput)
-      regionInput.value = "auto";
-    if (endpointInput) {
-      endpointInput.placeholder = "https://<account-id>.r2.cloudflarestorage.com";
-      if (!endpointInput.value)
-        endpointInput.value = "";
-    }
-  } else if (preset === "wasabi") {
-    if (regionInput)
-      regionInput.value = "us-east-1";
-    if (endpointInput) {
-      endpointInput.value = "https://s3.wasabisys.com";
-    }
-  } else if (preset === "minio") {
-    if (regionInput)
-      regionInput.value = "us-east-1";
-    if (endpointInput) {
-      endpointInput.value = "http://localhost:8333";
-    }
-  }
-}
-function generateRandomPassphrase() {
-  const words = [
-    "anchor",
-    "compass",
-    "galleon",
-    "starlight",
-    "corsair",
-    "treasure",
-    "horizon",
-    "voyage",
-    "mariner",
-    "kraken",
-    "caravel",
-    "tempest",
-    "harbor",
-    "island",
-    "cutlass"
-  ];
-  const chosen = [];
-  for (let i = 0;i < 4; i++) {
-    const idx = Math.floor(Math.random() * words.length);
-    chosen.push(words[idx]);
-  }
-  const phrase = chosen.join("-") + "-" + Math.floor(100 + Math.random() * 900);
-  const p1 = document.getElementById("wizard-passphrase-input");
-  const p2 = document.getElementById("wizard-confirm-passphrase-input");
-  if (p1)
-    p1.value = phrase;
-  if (p2)
-    p2.value = phrase;
-  showToast("\uD83C\uDFB2 Random recovery passphrase generated! Save this securely.", "success");
-  return phrase;
-}
-async function handleSetupWizardSubmit() {
-  const errBanner = document.getElementById("wizard-error-banner");
-  const showError = (msg) => {
-    if (errBanner) {
-      errBanner.textContent = msg;
-      errBanner.style.display = "block";
-    } else {
-      showToast(msg, "error");
-    }
+  var popover = {
+    overview: null,
+    recent: [],
+    conflicts: [],
+    showConflicts: false,
+    busy: false
   };
-  if (errBanner)
-    errBanner.style.display = "none";
-  const folder = document.getElementById("wizard-folder-input")?.value.trim() || "~/RenegadeBox";
-  const deviceName = document.getElementById("wizard-device-name-input")?.value.trim();
-  const bucket = document.getElementById("wizard-bucket-input")?.value.trim();
-  const region = document.getElementById("wizard-region-input")?.value.trim() || "us-east-1";
-  const endpoint = document.getElementById("wizard-endpoint-input")?.value.trim() || undefined;
-  const accessKeyId = document.getElementById("wizard-access-key-input")?.value.trim();
-  const secretKey = document.getElementById("wizard-secret-key-input")?.value.trim();
-  const passphrase = document.getElementById("wizard-passphrase-input")?.value;
-  const confirmPass = document.getElementById("wizard-confirm-passphrase-input")?.value;
-  if (currentWizardStep === 1) {
-    if (!folder)
-      return showError("Please specify a sync folder location.");
-    showWizardStep(2);
-    return;
-  }
-  if (currentWizardStep === 2) {
-    if (!bucket)
-      return showError("Please enter an S3 bucket name.");
-    if (!accessKeyId)
-      return showError("Please enter your S3 Access Key ID.");
-    if (!secretKey)
-      return showError("Please enter your S3 Secret Access Key.");
-    showWizardStep(3);
-    return;
-  }
-  if (currentWizardStep === 3) {
-    if (!passphrase || passphrase.length < 12) {
-      return showError("Passphrase must be at least 12 characters — it is the only thing protecting your files.");
-    }
-    if (passphrase !== confirmPass) {
-      return showError("Passphrases do not match. Please re-enter.");
-    }
-    const nextBtn = document.getElementById("wizard-next-btn");
-    const oldBtnText = nextBtn?.textContent;
-    if (nextBtn) {
-      nextBtn.disabled = true;
-      nextBtn.textContent = "Setting up vault...";
-    }
+  async function refreshPopover() {
     try {
-      const res = await tauriInvoke("setup_vault", {
-        payload: {
-          folder,
-          bucket,
-          region,
-          endpoint,
-          access_key_id: accessKeyId,
-          secret_access_key: secretKey,
-          passphrase,
-          device_name: deviceName,
-          hub_url: undefined
+      const [overview, recent] = await Promise.all([
+        invoke2("get_sync_overview"),
+        invoke2("list_recent_files", { limit: 10 })
+      ]);
+      popover.overview = overview;
+      popover.recent = recent;
+      popover.conflicts = overview.conflicts > 0 || popover.showConflicts ? await invoke2("list_conflicts") : [];
+    } catch (err) {
+      popover.overview = { initialized: true, paused: false, syncing: false, pending: 0, conflicts: 0, error: errText(err) };
+    }
+    renderPopoverView();
+  }
+  function renderPopoverView() {
+    if (!popover.overview)
+      return;
+    root().innerHTML = popover.showConflicts ? renderConflictList({ conflicts: popover.conflicts, now: Date.now() }) : renderPopover({ overview: popover.overview, recent: popover.recent, now: Date.now() });
+  }
+  async function onPopoverClick(ev) {
+    const target = ev.target.closest("button");
+    if (!target || popover.busy)
+      return;
+    const index = Number(target.dataset.index);
+    try {
+      if (target.id === "status-line" && target.classList.contains("status-link")) {
+        popover.showConflicts = true;
+        await refreshPopover();
+      } else if (target.id === "conflicts-back") {
+        popover.showConflicts = false;
+        renderPopoverView();
+      } else if (target.dataset.resolution) {
+        const item = popover.conflicts[index];
+        if (!item)
+          return;
+        popover.busy = true;
+        target.closest(".conflict")?.querySelectorAll("button").forEach((b) => b.disabled = true);
+        await resolveConflict(invoke2, item, target.dataset.resolution);
+        popover.busy = false;
+        await refreshPopover();
+        if (popover.conflicts.length === 0) {
+          popover.showConflicts = false;
+          renderPopoverView();
         }
-      });
-      currentVaultStatus = res;
-      closeSetupWizard();
-      showToast("\uD83C\uDF89 Encrypted vault setup complete! Zero-knowledge sync is active.", "success");
-      logActivity("\uD83C\uDFF4‍☠️ Vault Initialized", `Syncing ${folder} <-> s3://${bucket}`, "system");
-      await refreshVaultStatus();
-      await refreshFilesList();
-    } catch (err) {
-      showError(`Setup failed: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      if (nextBtn) {
-        nextBtn.disabled = false;
-        nextBtn.textContent = oldBtnText || "Continue →";
-      }
-    }
-  }
-}
-var contextMenuTargetFile = null;
-function showContextMenu(x, y, file) {
-  contextMenuTargetFile = file;
-  const menu = document.getElementById("context-menu");
-  if (!menu)
-    return;
-  const starLabel = document.getElementById("ctx-star-label");
-  if (starLabel) {
-    starLabel.textContent = starredPaths.has(file.path) ? "★ Unstar" : "⭐ Star";
-  }
-  const ctxConflict = document.getElementById("ctx-conflict");
-  if (ctxConflict) {
-    ctxConflict.style.display = file.status === "conflicted" ? "flex" : "none";
-  }
-  menu.style.left = `${Math.min(window.innerWidth - 220, x)}px`;
-  menu.style.top = `${Math.min(window.innerHeight - 300, y)}px`;
-  menu.style.display = "block";
-}
-function hideContextMenu() {
-  const menu = document.getElementById("context-menu");
-  if (menu)
-    menu.style.display = "none";
-  contextMenuTargetFile = null;
-}
-async function initDesktopApp() {
-  console.log("[RenegadeBox] Initializing complete desktop UI...");
-  loadStarred();
-  document.getElementById("sync-now-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    handleSyncNow();
-  });
-  document.getElementById("pause-sync-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    handleTogglePause();
-  });
-  document.getElementById("open-folder-btn")?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    try {
-      await tauriInvoke("open_sync_folder");
-    } catch (err) {
-      console.error("Open folder error:", err);
-    }
-  });
-  document.getElementById("upload-files-btn")?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    try {
-      const imported = await tauriInvoke("pick_and_import_files");
-      if (imported && imported.length > 0) {
-        logActivity(`⚔️ Imported ${imported.length} file(s)`, imported.join(", "), "upload");
-        await refreshFilesList();
-        await refreshVaultStatus();
+      } else if (target.dataset.action === "open") {
+        const f = popover.recent[index];
+        if (f)
+          await invoke2("open_file", { path: f.path });
+      } else if (target.dataset.action === "reveal") {
+        const f = popover.recent[index];
+        if (f)
+          await invoke2("reveal_in_finder", { path: f.path });
+      } else if (target.id === "open-folder-btn") {
+        await invoke2("open_sync_folder");
+      } else if (target.id === "pause-btn") {
+        await invoke2(popover.overview?.paused ? "resume_sync" : "pause_sync");
+        await refreshPopover();
+      } else if (target.id === "settings-btn") {
+        await invoke2("open_settings");
+      } else if (target.id === "start-setup-btn") {
+        await invoke2("open_setup");
       }
     } catch (err) {
-      console.error("Upload error:", err);
+      popover.busy = false;
+      showPopoverNotice(errText(err));
     }
-  });
-  document.getElementById("dropzone-box")?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    try {
-      const imported = await tauriInvoke("pick_and_import_files");
-      if (imported && imported.length > 0) {
-        logActivity(`⚔️ Stashed ${imported.length} file(s)`, imported.join(", "), "upload");
-        await refreshFilesList();
-        await refreshVaultStatus();
-      }
-    } catch (err) {
-      console.error("Dropzone upload error:", err);
-    }
-  });
-  document.getElementById("new-folder-btn")?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    const name = prompt("Enter new folder name (e.g. Loot, Documents):");
-    if (name && name.trim()) {
-      const folderPath = currentDirectory ? `${currentDirectory}/${name.trim()}` : name.trim();
+  }
+  function showPopoverNotice(raw) {
+    const body = document.querySelector(".popover-body");
+    if (!body)
+      return;
+    document.querySelector(".notice")?.remove();
+    const p = document.createElement("p");
+    p.className = "notice";
+    p.setAttribute("role", "alert");
+    p.textContent = friendlyError(raw, raw);
+    body.prepend(p);
+  }
+  function initPopover() {
+    root().addEventListener("click", (e) => void onPopoverClick(e));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape")
+        invoke2("hide_popover");
+    });
+    window.addEventListener("focus", () => void refreshPopover());
+    let pending = null;
+    const soon = () => {
+      if (pending)
+        clearTimeout(pending);
+      pending = setTimeout(() => void refreshPopover(), 150);
+    };
+    onBackendEvents(["status-changed", "vault-changed", "sync-started", "sync-finished", "sync-paused", "sync-resumed"], soon);
+    setInterval(renderPopoverView, 30000);
+    refreshPopover();
+  }
+  async function loadSettings() {
+    const [status, autostart, ignored] = await Promise.all([
+      invoke2("get_vault_status"),
+      invoke2("is_autostart_enabled").catch(() => false),
+      invoke2("get_ignored_patterns").catch(() => [])
+    ]);
+    root().innerHTML = renderSettings({ status, autostart, ignored });
+    bindSettings(status);
+  }
+  function flash(id, text, isError = false) {
+    const el = $(id);
+    if (!el)
+      return;
+    el.textContent = text;
+    el.classList.toggle("error", isError);
+  }
+  function bindSettings(status) {
+    let keyStore = keyStoreKind(status.key_store);
+    const radio = (v) => document.querySelector(`input[name="key-store"][value="${v}"]`);
+    const confirmBox = $("key-store-confirm");
+    const restore = () => radio(keyStore).checked = true;
+    const moveKeys = async (useKeychain) => {
+      flash("key-store-message", "Moving your keys…");
       try {
-        await tauriInvoke("create_folder", { relativePath: folderPath });
-        logActivity(`\uD83D\uDCC1 Created folder`, folderPath, "system");
-        await refreshFilesList();
+        await changeKeyStore(invoke2, useKeychain);
+        keyStore = useKeychain ? "keychain" : "file";
+        flash("key-store-message", useKeychain ? "Your keys are now in the system keychain." : "Your keys are now in an unprotected file on this Mac.");
       } catch (err) {
-        alert("Could not create folder: " + err);
+        restore();
+        flash("key-store-message", `Couldn't move your keys. ${friendlyError(errText(err), "Please try again.")}`, true);
       }
-    }
-  });
-  document.getElementById("inspector-open-file-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      tauriInvoke("open_file", { path: selectedFile.path });
-  });
-  document.getElementById("inspector-open-external")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      tauriInvoke("open_file", { path: selectedFile.path });
-  });
-  document.getElementById("inspector-reveal-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      tauriInvoke("reveal_in_finder", { path: selectedFile.path });
-  });
-  document.getElementById("action-reveal-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      tauriInvoke("reveal_in_finder", { path: selectedFile.path });
-  });
-  document.getElementById("inspector-rename-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      handleRenameFile(selectedFile);
-  });
-  document.getElementById("inspector-delete-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      handleDeleteFile(selectedFile);
-  });
-  document.getElementById("inspector-star-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      toggleStar(selectedFile.path);
-  });
-  document.getElementById("inspector-export-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      handleExportCopy(selectedFile);
-  });
-  document.getElementById("inspector-conflict-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      openConflictModal(selectedFile);
-  });
-  document.getElementById("action-history-btn")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    if (selectedFile)
-      openHistoryModal(selectedFile);
-  });
-  document.getElementById("action-link-btn")?.addEventListener("click", () => {
-    if (selectedFile) {
-      navigator.clipboard?.writeText(selectedFile.path);
-      logActivity("Copied path", selectedFile.path, "system");
-    }
-  });
-  document.getElementById("action-copy-blob-btn")?.addEventListener("click", () => {
-    if (selectedFile?.blob_id) {
-      navigator.clipboard?.writeText(selectedFile.blob_id);
-      logActivity("Copied S3 Blob ID", selectedFile.blob_id, "system");
-    }
-  });
-  const setupSortHeader = (id, key) => {
-    document.getElementById(id)?.addEventListener("click", () => {
-      if (currentSortKey === key) {
-        currentSortAsc = !currentSortAsc;
+    };
+    document.querySelectorAll('input[name="key-store"]').forEach((input) => input.addEventListener("change", () => {
+      if (input.value === keyStore)
+        return;
+      if (input.value === "file") {
+        confirmBox.hidden = false;
       } else {
-        currentSortKey = key;
-        currentSortAsc = true;
+        confirmBox.hidden = true;
+        moveKeys(true);
       }
-      ["name", "type", "size", "status"].forEach((k) => {
-        const icon = document.getElementById(`sort-${k}-icon`);
-        if (icon) {
-          icon.textContent = k === currentSortKey ? currentSortAsc ? "▲" : "▼" : "";
-        }
+    }));
+    $("key-store-cancel").addEventListener("click", () => {
+      confirmBox.hidden = true;
+      restore();
+    });
+    $("key-store-confirm-btn").addEventListener("click", () => {
+      confirmBox.hidden = true;
+      moveKeys(false);
+    });
+    $("device-name-save").addEventListener("click", async () => {
+      const name = $("device-name-input").value.trim();
+      if (!name)
+        return flash("device-name-message", "Enter a name for this Mac.", true);
+      try {
+        await invoke2("update_vault_config", { payload: { device_name: name } });
+        flash("device-name-message", "Saved.");
+      } catch (err) {
+        flash("device-name-message", errText(err), true);
+      }
+    });
+    $("autostart-toggle").addEventListener("change", async (e) => {
+      const input = e.target;
+      try {
+        input.checked = await invoke2("set_autostart_enabled", { enabled: input.checked });
+      } catch {
+        input.checked = !input.checked;
+      }
+    });
+    $("ignored-save").addEventListener("click", async () => {
+      const patterns = $("ignored-input").value.split(`
+`).map((l) => l.trim()).filter(Boolean);
+      try {
+        await invoke2("save_ignored_patterns", { patterns });
+        flash("ignored-message", "Saved.");
+      } catch (err) {
+        flash("ignored-message", errText(err), true);
+      }
+    });
+    $("reconnect-btn").addEventListener("click", () => void invoke2("open_setup"));
+    $("quit-btn").addEventListener("click", () => void invoke2("quit_app"));
+  }
+  function initSettings() {
+    document.title = "RenegadeBox Settings";
+    loadSettings().catch((err) => {
+      root().innerHTML = `<main class="settings"><p class="form-error">${friendlyError(errText(err), "Settings couldn't be loaded.")}</p></main>`;
+    });
+  }
+  function initSetup() {
+    document.title = "Set up RenegadeBox";
+    root().innerHTML = renderSetup();
+    let step = 1;
+    let provider = "aws";
+    let finished = false;
+    const input = (id) => $(id);
+    const values = () => ({
+      provider,
+      endpoint: input("setup-endpoint").value.trim(),
+      bucket: input("setup-bucket").value.trim(),
+      region: input("setup-region").value.trim(),
+      access_key_id: input("setup-access-key").value.trim(),
+      secret_access_key: input("setup-secret").value.trim(),
+      passphrase: input("setup-passphrase").value,
+      passphrase_confirm: input("setup-passphrase-confirm").value,
+      folder: input("setup-folder").value.trim(),
+      device_name: input("setup-device-name").value.trim()
+    });
+    const setError = (msg) => $("setup-error").textContent = msg;
+    const choose = (id) => {
+      provider = id;
+      const p = PROVIDERS.find((x) => x.id === id);
+      document.querySelectorAll(".preset").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.provider === id)));
+      input("setup-region").value = p.region;
+      input("setup-endpoint").value = p.endpoint;
+      $("setup-endpoint-hint").textContent = p.endpointHint;
+    };
+    const show = (s) => {
+      document.querySelectorAll(".step").forEach((el) => el.hidden = el.dataset.step !== String(s));
+      document.querySelectorAll("[data-step-dot]").forEach((el) => {
+        const n = Number(el.dataset.stepDot);
+        el.classList.toggle("active", s !== "done" && n === s);
+        el.classList.toggle("done", s === "done" || n < s);
       });
-      renderActiveViews();
+      $("setup-back").hidden = s === "done" || s === 1;
+      $("setup-next").textContent = s === "done" ? "Done" : s === SETUP_STEPS ? "Set up RenegadeBox" : "Continue";
+      setError("");
+      if (typeof s === "number")
+        step = s;
+      document.querySelector(`.step[data-step="${s}"] input:not([type=radio])`)?.focus();
+    };
+    const meter = () => {
+      const v = values();
+      const left = MIN_PASSPHRASE - [...v.passphrase].length;
+      $("passphrase-meter").textContent = v.passphrase.length === 0 ? "" : left > 0 ? `${left} more character${left === 1 ? "" : "s"} needed.` : v.passphrase_confirm && v.passphrase_confirm !== v.passphrase ? "The two passphrases don't match yet." : "Long enough.";
+    };
+    input("setup-passphrase").addEventListener("input", meter);
+    input("setup-passphrase-confirm").addEventListener("input", meter);
+    document.querySelectorAll(".preset").forEach((b) => b.addEventListener("click", () => choose(b.dataset.provider)));
+    $("setup-back").addEventListener("click", () => show(Math.max(1, step - 1)));
+    $("setup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (finished)
+        return void invoke2("close_window");
+      const v = values();
+      const problem = validateSetupStep(step, v);
+      if (problem)
+        return setError(problem);
+      if (step < SETUP_STEPS)
+        return show(step + 1);
+      const next = $("setup-next");
+      const back = $("setup-back");
+      next.disabled = back.disabled = true;
+      next.textContent = "Connecting to your storage…";
+      try {
+        await invoke2("setup_vault", {
+          payload: {
+            folder: v.folder,
+            bucket: v.bucket,
+            region: v.region,
+            endpoint: v.endpoint || null,
+            access_key_id: v.access_key_id,
+            secret_access_key: v.secret_access_key,
+            passphrase: v.passphrase,
+            device_name: v.device_name || null,
+            hub_url: null
+          }
+        });
+        finished = true;
+        show("done");
+      } catch (err) {
+        const raw = errText(err);
+        show(setupErrorStep(raw));
+        setError(friendlyError(raw, raw));
+      } finally {
+        next.disabled = back.disabled = false;
+      }
     });
-  };
-  setupSortHeader("th-name", "name");
-  setupSortHeader("th-type", "type");
-  setupSortHeader("th-size", "size");
-  setupSortHeader("th-status", "status");
-  document.getElementById("view-list-btn")?.addEventListener("click", () => {
-    currentViewMode = "list";
-    document.getElementById("view-list-btn")?.classList.add("active");
-    document.getElementById("view-grid-btn")?.classList.remove("active");
-    renderActiveViews();
-  });
-  document.getElementById("view-grid-btn")?.addEventListener("click", () => {
-    currentViewMode = "grid";
-    document.getElementById("view-grid-btn")?.classList.add("active");
-    document.getElementById("view-list-btn")?.classList.remove("active");
-    renderActiveViews();
-  });
-  document.querySelectorAll(".filter-chip").forEach((chip) => {
-    chip.addEventListener("click", () => {
-      document.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
-      chip.classList.add("active");
-      currentFilter = chip.getAttribute("data-filter") || "all";
-      renderActiveViews();
-    });
-  });
-  document.getElementById("nav-all-files")?.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
-    document.getElementById("nav-all-files")?.classList.add("active");
-    activeNav = "files";
-    currentDirectory = "";
-    const title = document.getElementById("view-title");
-    if (title)
-      title.textContent = "RenegadeBox";
-    renderActiveViews();
-  });
-  document.getElementById("nav-starred")?.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
-    document.getElementById("nav-starred")?.classList.add("active");
-    activeNav = "starred";
-    const title = document.getElementById("view-title");
-    if (title)
-      title.textContent = "Starred Files";
-    renderActiveViews();
-  });
-  document.getElementById("nav-activity")?.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
-    document.getElementById("nav-activity")?.classList.add("active");
-    activeNav = "activity";
-    renderActiveViews();
-  });
-  document.getElementById("nav-settings")?.addEventListener("click", openSettingsModal);
-  document.getElementById("user-profile-btn")?.addEventListener("click", openSettingsModal);
-  document.getElementById("footer-feedback-link")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    openSettingsModal();
-  });
-  document.getElementById("nav-back-btn")?.addEventListener("click", () => {
-    if (navHistoryIndex > 0) {
-      navHistoryIndex -= 1;
-      currentDirectory = navHistory[navHistoryIndex];
-      renderActiveViews();
-    }
-  });
-  document.getElementById("nav-forward-btn")?.addEventListener("click", () => {
-    if (navHistoryIndex < navHistory.length - 1) {
-      navHistoryIndex += 1;
-      currentDirectory = navHistory[navHistoryIndex];
-      renderActiveViews();
-    }
-  });
-  document.getElementById("close-conflict-modal-btn")?.addEventListener("click", closeConflictModal);
-  document.getElementById("cancel-conflict-btn")?.addEventListener("click", closeConflictModal);
-  document.getElementById("resolve-keep-local-btn")?.addEventListener("click", () => resolveConflict("keep_local"));
-  document.getElementById("resolve-keep-conflicted-btn")?.addEventListener("click", () => resolveConflict("keep_conflicted"));
-  document.getElementById("resolve-keep-both-btn")?.addEventListener("click", () => resolveConflict("keep_both"));
-  document.getElementById("close-history-modal-btn")?.addEventListener("click", closeHistoryModal);
-  document.getElementById("done-history-modal-btn")?.addEventListener("click", closeHistoryModal);
-  document.getElementById("close-modal-btn")?.addEventListener("click", closeSettingsModal);
-  document.getElementById("modal-done-btn")?.addEventListener("click", closeSettingsModal);
-  document.getElementById("save-settings-btn")?.addEventListener("click", handleSaveSettings);
-  document.getElementById("modal-dashboard-btn")?.addEventListener("click", () => tauriInvoke("open_dashboard"));
-  document.getElementById("cfg-autostart-toggle")?.addEventListener("change", async (e) => {
-    const target = e.target;
-    try {
-      await tauriInvoke("set_autostart_enabled", { enabled: target.checked });
-      showToast(target.checked ? "\uD83D\uDE80 RenegadeBox will start automatically on login." : "Disabled start at login.", "info");
-    } catch (_) {
-      showToast("Failed to update startup preferences", "error");
-    }
-  });
-  document.getElementById("add-finder-btn")?.addEventListener("click", async () => {
-    try {
-      await tauriInvoke("add_to_finder_favorites");
-      showToast("\uD83D\uDCC2 Opened sync folder in Finder.", "success");
-    } catch (_) {
-      showToast("Opened sync folder in Finder", "info");
-    }
-  });
-  document.getElementById("migrate-keystore-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("migrate-keystore-btn");
-    const target = btn?.getAttribute("data-target") ?? "file";
-    const useKeychain = target === "keychain";
-    try {
-      const res = await tauriInvoke("set_key_store", { use_keychain: useKeychain, useKeychain });
-      showToast(`⚡ Keystore switched to ${res}`, "success");
-      await refreshVaultStatus();
-      openSettingsModal();
-    } catch (err) {
-      showToast(`Keystore error: ${err instanceof Error ? err.message : String(err)}`, "error");
-    }
-  });
-  document.getElementById("open-setup-wizard-btn")?.addEventListener("click", () => {
-    closeSettingsModal();
-    openSetupWizard();
-  });
-  document.getElementById("wizard-cancel-btn")?.addEventListener("click", closeSetupWizard);
-  document.getElementById("wizard-back-btn")?.addEventListener("click", () => {
-    if (currentWizardStep > 1)
-      showWizardStep(currentWizardStep - 1);
-  });
-  document.getElementById("wizard-next-btn")?.addEventListener("click", handleSetupWizardSubmit);
-  document.getElementById("wizard-generate-pass-btn")?.addEventListener("click", generateRandomPassphrase);
-  document.querySelectorAll(".provider-preset-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const preset = btn.dataset.preset;
-      if (preset)
-        setProviderPreset(preset);
-    });
-  });
-  document.getElementById("ctx-open")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      tauriInvoke("open_file", { path: contextMenuTargetFile.path });
-    hideContextMenu();
-  });
-  document.getElementById("ctx-reveal")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      tauriInvoke("reveal_in_finder", { path: contextMenuTargetFile.path });
-    hideContextMenu();
-  });
-  document.getElementById("ctx-rename")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      handleRenameFile(contextMenuTargetFile);
-    hideContextMenu();
-  });
-  document.getElementById("ctx-star")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      toggleStar(contextMenuTargetFile.path);
-    hideContextMenu();
-  });
-  document.getElementById("ctx-history")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      openHistoryModal(contextMenuTargetFile);
-    hideContextMenu();
-  });
-  document.getElementById("ctx-conflict")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      openConflictModal(contextMenuTargetFile);
-    hideContextMenu();
-  });
-  document.getElementById("ctx-export")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      handleExportCopy(contextMenuTargetFile);
-    hideContextMenu();
-  });
-  document.getElementById("ctx-copy-path")?.addEventListener("click", () => {
-    if (contextMenuTargetFile) {
-      navigator.clipboard?.writeText(contextMenuTargetFile.path);
-      logActivity("Copied path", contextMenuTargetFile.path, "system");
-    }
-    hideContextMenu();
-  });
-  document.getElementById("ctx-copy-blob")?.addEventListener("click", () => {
-    if (contextMenuTargetFile?.blob_id) {
-      navigator.clipboard?.writeText(contextMenuTargetFile.blob_id);
-      logActivity("Copied blob ID", contextMenuTargetFile.blob_id, "system");
-    }
-    hideContextMenu();
-  });
-  document.getElementById("ctx-delete")?.addEventListener("click", () => {
-    if (contextMenuTargetFile)
-      handleDeleteFile(contextMenuTargetFile);
-    hideContextMenu();
-  });
-  window.addEventListener("click", (e) => {
-    const target = e.target;
-    if (!target.closest("#context-menu"))
-      hideContextMenu();
-  });
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      hideContextMenu();
-      closeSettingsModal();
-      closeConflictModal();
-      closeHistoryModal();
-    }
-  });
-  const searchInput = document.getElementById("search-input");
-  if (searchInput) {
-    searchInput.addEventListener("input", () => {
-      renderActiveViews();
-    });
+    choose(provider);
+    show(1);
   }
-  await refreshVaultStatus();
-  if (currentVaultStatus && !currentVaultStatus.initialized) {
-    openSetupWizard();
+  function mountPreviewBar(view, scenario) {
+    document.body.classList.add("preview", `preview-${view}`);
+    const labels = {
+      ok: "Up to date",
+      syncing: "Syncing",
+      paused: "Paused",
+      conflicts: "Needs attention",
+      error: "Error",
+      setup: "Not set up"
+    };
+    const link = (href, text, active) => `<a href="${href}"${active ? ' aria-current="page"' : ""}>${text}</a>`;
+    const bar = document.createElement("nav");
+    bar.className = "preview-bar";
+    bar.innerHTML = `<span class="preview-label">Preview</span>` + MOCK_SCENARIOS.map((s) => link(`?view=popover&state=${s}`, labels[s], view === "popover" && scenario === s)).join("") + link("?view=settings", "Settings", view === "settings") + link("?view=setup", "Setup", view === "setup");
+    document.body.prepend(bar);
   }
-  refreshFilesList();
-  setupAutoSyncEvents();
-  setInterval(() => {
-    refreshVaultStatus();
-  }, 5000);
-}
-async function setupAutoSyncEvents() {
-  const hasTauri = typeof window !== "undefined" && (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__));
-  if (!hasTauri)
-    return;
-  try {
-    const { listen: listen2 } = await Promise.resolve().then(() => (init_event(), exports_event));
-    await listen2("vault-changed", async () => {
-      console.log("[Tauri Event] vault-changed detected, refreshing UI...");
-      await refreshVaultStatus();
-      await refreshFilesList();
-    });
-    await listen2("sync-started", () => {
-      logActivity("⚔️ Hoisting booty to S3...", "Sync cycle started: encrypting and uploading", "upload");
-      const activityTitle = document.getElementById("activity-title");
-      const activityTime = document.getElementById("activity-time");
-      if (activityTitle)
-        activityTitle.textContent = "⚔️ Hoisting booty to S3...";
-      if (activityTime)
-        activityTime.textContent = "Encrypting & synchronizing with S3 pirate vault";
-    });
-    await listen2("sync-finished", async (event) => {
-      logActivity(event.payload.success ? "⚓ Booty stashed & synced" : "⚠️ Storm warning", event.payload.message, event.payload.success ? "system" : "conflict");
-      await refreshVaultStatus();
-      await refreshFilesList();
-    });
-    await listen2("sync-paused", () => {
-      updatePauseUI(true);
-      logActivity("⏸ Sync paused", "Background automatic synchronization suspended", "system");
-    });
-    await listen2("sync-resumed", () => {
-      updatePauseUI(false);
-      logActivity("▶ Sync resumed", "Background file watcher and automatic S3 sync enabled", "system");
-    });
-  } catch (err) {
-    console.warn("[RenegadeBox] Could not attach auto-sync event listeners:", err);
+  function init() {
+    const view = currentView();
+    document.body.classList.add(`view-${view}`);
+    if (!hasTauri())
+      mountPreviewBar(view, mockScenarioFromUrl());
+    if (view === "settings")
+      initSettings();
+    else if (view === "setup")
+      initSetup();
+    else
+      initPopover();
   }
-}
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initDesktopApp);
-} else {
-  initDesktopApp();
-}
-export {
-  toggleStar,
-  tauriInvoke,
-  showWizardStep,
-  showContextMenu,
-  setProviderPreset,
-  selectFile,
-  resolveConflict,
-  renderFileTable,
-  renderFileGrid,
-  renderBreadcrumbs,
-  renderActivityFeed,
-  renderActiveViews,
-  refreshVaultStatus,
-  refreshFilesList,
-  openSetupWizard,
-  openSettingsModal,
-  openHistoryModal,
-  openConflictModal,
-  logActivity,
-  initDesktopApp,
-  hideContextMenu,
-  handleTogglePause,
-  handleSyncNow,
-  handleSetupWizardSubmit,
-  handleSaveSettings,
-  handleRenameFile,
-  handleExportCopy,
-  handleDeleteFile,
-  getFilteredAndSortedFiles,
-  generateRandomPassphrase,
-  formatBytes,
-  escapeHtml,
-  enterDirectory,
-  closeSetupWizard,
-  closeSettingsModal,
-  closeHistoryModal,
-  closeConflictModal
-};
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", init);
+  else
+    init();
+})();
