@@ -13,26 +13,32 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const IDENTITY = "RenegadeBox Local Signing";
+const LOCAL_IDENTITY = "RenegadeBox Local Signing";
 const rustup = "/opt/homebrew/opt/rustup/bin";
 const env = { ...process.env, PATH: `${rustup}:${process.env.PATH}` };
 // Bun's shell resolves commands against *this* process's PATH, not the .env() it is given,
 // so call cargo by absolute path when Rust is installed via Homebrew rustup.
 const CARGO = existsSync(join(rustup, "cargo")) ? join(rustup, "cargo") : (Bun.which("cargo") ?? "cargo");
 
+// Prefer an Apple Development certificate: it carries a Team ID, so macOS remembers
+// Keychain approvals by identity across rebuilds. A self-signed identity has no Team ID,
+// so macOS pins approvals to each build's cdhash and asks again after every rebuild.
 const identities = await $`security find-identity -v -p codesigning`.nothrow().text();
-const canSign = identities.includes(IDENTITY);
-if (!canSign) {
-  console.warn(`! No "${IDENTITY}" identity — builds will be unsigned and macOS will keep asking for Keychain access.`);
-  console.warn("  Run: bun scripts/setup-signing.ts");
+const appleDev = identities.match(/"(Apple Development: [^"]+)"/)?.[1];
+const IDENTITY = appleDev ?? (identities.includes(LOCAL_IDENTITY) ? LOCAL_IDENTITY : undefined);
+const canSign = IDENTITY !== undefined;
+if (!appleDev) {
+  console.warn("! No Apple Development certificate: macOS will ask for Keychain access again after every rebuild.");
+  console.warn("  Fix (free): Xcode → Settings → Accounts → add your Apple ID → Manage Certificates → + → Apple Development.");
 }
+if (canSign) console.log(`Signing as: ${IDENTITY}`);
 
 // --- CLI
 console.log("Building rbox…");
 await $`${CARGO} install --path engine --root ${join(homedir(), ".local")} --locked --force --quiet`.cwd(ROOT).env(env);
 const rbox = join(homedir(), ".local/bin/rbox");
 if (canSign) {
-  await $`codesign --force --sign ${IDENTITY} --identifier com.renegadebox.rbox ${rbox}`.quiet();
+  await $`codesign --force --sign ${IDENTITY!} --identifier com.renegadebox.rbox ${rbox}`.quiet();
   console.log(`✓ ${rbox} (signed)`);
 } else {
   console.log(`✓ ${rbox} (unsigned)`);
@@ -41,7 +47,7 @@ if (canSign) {
 // --- Desktop app
 if (process.argv.includes("--desktop")) {
   console.log("Building the desktop app (this takes a few minutes)…");
-  const desktopEnv = canSign ? { ...env, APPLE_SIGNING_IDENTITY: IDENTITY } : env;
+  const desktopEnv = canSign ? { ...env, APPLE_SIGNING_IDENTITY: IDENTITY! } : env;
   await $`bun install --silent`.cwd(join(ROOT, "desktop")).env(env);
   await $`bun run build -- --bundles app`.cwd(join(ROOT, "desktop")).env(desktopEnv);
   const target = JSON.parse(await $`${CARGO} metadata --format-version 1 --no-deps`.cwd(ROOT).env(env).text()).target_directory;

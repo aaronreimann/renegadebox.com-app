@@ -229,7 +229,7 @@ async fn main() -> Result<()> {
             }
         }
         Cmd::Status => {
-            let mut e = Engine::open(profile).await?;
+            let mut e = Engine::open_local(profile)?;
             e.scan()?;
             let cfg = e.cfg.clone();
             let all = e.state().all()?;

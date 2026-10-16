@@ -71,6 +71,8 @@ pub struct Engine {
     /// Allow a scan to treat every previously synced file as deleted (see `scan`).
     pub allow_mass_delete: bool,
     pub on_appended: Option<tokio::sync::mpsc::UnboundedSender<crate::hub::AppendedEvent>>,
+    /// Opened without secrets (see `open_local`): may scan, must never touch the bucket.
+    local_only: bool,
 }
 
 struct LocalStat {
@@ -127,7 +129,19 @@ impl Engine {
 
         let state = State::open(&profile.state_path())?;
         let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
-        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None })
+        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None, local_only: false })
+    }
+
+    /// Open for local inspection only (`rbox status`): reads no secrets, so it never
+    /// triggers a Keychain prompt and needs no network. The keys and storage client are
+    /// placeholders; `pull`/`push` refuse to run on an engine opened this way.
+    pub fn open_local(profile: Profile) -> Result<Self> {
+        let cfg = profile.load()?;
+        let storage = storage_for(&cfg, "");
+        let state = State::open(&profile.state_path())?;
+        let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
+        let keys = Keys::derive(&SecretKey::random());
+        Ok(Self { keys, cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None, local_only: true })
     }
 
     pub fn set_on_appended(&mut self, tx: tokio::sync::mpsc::UnboundedSender<crate::hub::AppendedEvent>) {
@@ -309,6 +323,9 @@ impl Engine {
     }
 
     pub async fn pull(&mut self) -> Result<()> {
+        if self.local_only {
+            bail!("engine opened without secrets cannot sync");
+        }
         self.recover_pending_append().await?;
         let mut batch: Vec<JournalEntry> = Vec::new();
         for prefix in self.storage.list_prefixes(journal::JOURNAL_PREFIX).await? {
@@ -598,6 +615,9 @@ impl Engine {
     // ------------------------------------------------------------------ push
 
     pub async fn push(&mut self) -> Result<()> {
+        if self.local_only {
+            bail!("engine opened without secrets cannot sync");
+        }
         let dirty = self.state.dirty()?;
         // Rename detection: a disappeared synced file + a new file with identical content.
         let mut adds: HashMap<String, FileRow> = HashMap::new();
