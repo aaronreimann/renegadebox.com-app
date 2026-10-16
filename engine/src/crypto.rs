@@ -63,7 +63,7 @@ impl SecretKey {
         Self::from_bytes(&B64.decode(s.trim()).context("invalid base64 key")?)
     }
     fn cipher(&self) -> Aes256Gcm {
-        Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&self.0))
+        Aes256Gcm::new(&Key::<Aes256Gcm>::from(self.0))
     }
 }
 
@@ -116,7 +116,7 @@ impl Keys {
         let ct = self
             .journal
             .cipher()
-            .encrypt(Nonce::from_slice(&nonce), Payload { msg: plaintext, aad: aad.as_bytes() })
+            .encrypt(&Nonce::from(nonce), Payload { msg: plaintext, aad: aad.as_bytes() })
             .map_err(|_| anyhow!("seal failed"))?;
         let mut out = Vec::with_capacity(4 + 12 + ct.len());
         out.extend_from_slice(SEAL_MAGIC);
@@ -132,7 +132,7 @@ impl Keys {
         self.journal
             .cipher()
             .decrypt(
-                Nonce::from_slice(&sealed[4..16]),
+                &Nonce::from(<[u8; 12]>::try_from(&sealed[4..16]).expect("length checked above")),
                 Payload { msg: &sealed[16..], aad: aad.as_bytes() },
             )
             .map_err(|_| anyhow!("journal entry failed authentication (wrong key or tampered)"))
@@ -217,7 +217,7 @@ fn encrypt_stream(
         hasher.update(&cur[..cur_len]);
         let ct = cipher
             .encrypt(
-                Nonce::from_slice(&chunk_nonce(index, last)),
+                &Nonce::from(chunk_nonce(index, last)),
                 Payload { msg: &cur[..cur_len], aad: &chunk_aad(&header, &blob_id, index, last) },
             )
             .map_err(|_| anyhow!("chunk encryption failed"))?;
@@ -264,7 +264,7 @@ fn decrypt_stream(
         let last = next_len == 0;
         let pt = cipher
             .decrypt(
-                Nonce::from_slice(&chunk_nonce(index, last)),
+                &Nonce::from(chunk_nonce(index, last)),
                 Payload { msg: &cur[..cur_len], aad: &chunk_aad(&header, &blob_id, index, last) },
             )
             .map_err(|_| anyhow!("blob chunk {index} failed authentication (tampered, truncated or reordered)"))?;
@@ -374,7 +374,7 @@ impl Vault {
         let kek = Self::kek(passphrase, &v.kdf)?;
         let ct = kek
             .cipher()
-            .encrypt(Nonce::from_slice(&nonce), Payload { msg: master.as_bytes(), aad: &v.aad() })
+            .encrypt(&Nonce::from(nonce), Payload { msg: master.as_bytes(), aad: &v.aad() })
             .map_err(|_| anyhow!("vault wrap failed"))?;
         v.wrapped_master = B64.encode(ct);
         Ok(v)
@@ -392,7 +392,7 @@ impl Vault {
         let ct = B64.decode(&self.wrapped_master).context("bad vault ciphertext")?;
         let pt = kek
             .cipher()
-            .decrypt(Nonce::from_slice(&nonce), Payload { msg: &ct, aad: &self.aad() })
+            .decrypt(&Nonce::from(<[u8; 12]>::try_from(nonce.as_slice()).expect("length checked above")), Payload { msg: &ct, aad: &self.aad() })
             .map_err(|_| anyhow!("wrong passphrase (or vault tampered)"))?;
         SecretKey::from_bytes(&pt)
     }

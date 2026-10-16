@@ -181,7 +181,7 @@ pub fn run() {
             commands::save_ignored_patterns,
             commands::export_file_copy,
             commands::setup_vault,
-            commands::migrate_to_silent_keystore,
+            commands::set_key_store,
             commands::is_autostart_enabled,
             commands::set_autostart_enabled,
             commands::add_to_finder_favorites

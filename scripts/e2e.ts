@@ -12,7 +12,9 @@ const ROOT = join(import.meta.dir, "..");
 const ENDPOINT = process.env.RBOX_E2E_ENDPOINT ?? "http://localhost:8333";
 const BUCKET = `rbox-e2e-${Date.now()}`;
 const PASS = "correct horse battery staple";
-const BIN = join(ROOT, "engine/target/release/rbox");
+// Ask cargo where it builds (the repo is a workspace, so not engine/target) — never test a stale binary.
+const TARGET_DIR: string = JSON.parse(await $`cargo metadata --format-version 1 --no-deps`.cwd(ROOT).text()).target_directory;
+const BIN = join(TARGET_DIR, "release/rbox");
 const T = mkdtempSync(join(tmpdir(), "rbox-e2e-"));
 
 const s3 = new Bun.S3Client({ accessKeyId: "dev", secretAccessKey: "dev", endpoint: ENDPOINT, bucket: BUCKET });
@@ -77,7 +79,8 @@ const contents = (d: string) => new Set(tree(d).values());
 
 // ------------------------------------------------------------------------------------------
 console.log(`bucket ${BUCKET}, workdir ${T}`);
-await $`cargo build --release --quiet`.cwd(join(ROOT, "engine"));
+await $`cargo build --release --quiet -p renegadebox-engine`.cwd(ROOT);
+console.log(`testing ${BIN}`);
 await $`echo ${`s3.bucket.create -name ${BUCKET}`} | docker compose exec -T s3 weed shell`.cwd(ROOT).quiet();
 
 // --- init

@@ -103,6 +103,59 @@ impl Profile {
         }
     }
 
+    /// Move every secret this device holds into `to`, verify the copies read back, switch
+    /// the config over, and only then erase the old copies. Safe to re-run after a failure:
+    /// until the config is saved, the old store stays authoritative and untouched.
+    pub fn move_secrets(&self, cfg: &mut Config, to: KeyStoreKind) -> Result<()> {
+        if cfg.key_store == to {
+            return Ok(());
+        }
+        let mut values = Vec::new();
+        for name in [SECRET_S3, SECRET_MASTER] {
+            values.push((name, self.get_secret(cfg, name)?));
+        }
+        if let Ok(token) = self.get_secret(cfg, SECRET_DEVICE_TOKEN) {
+            values.push((SECRET_DEVICE_TOKEN, token));
+        }
+        let mut target = cfg.clone();
+        target.key_store = to;
+        for (name, value) in &values {
+            self.set_secret(&target, name, value)?;
+            if &self.get_secret(&target, name)? != value {
+                bail!("{name} did not read back correctly from the new key store; nothing was changed");
+            }
+        }
+        let from = cfg.clone();
+        self.save(&target)?;
+        *cfg = target;
+        for (name, _) in &values {
+            if let Err(e) = self.delete_secret(&from, name) {
+                tracing::warn!("could not remove old copy of {name}: {e:#}");
+            }
+        }
+        Ok(())
+    }
+
+    fn delete_secret(&self, cfg: &Config, name: &str) -> Result<()> {
+        match cfg.key_store {
+            KeyStoreKind::Keychain => keyring::Entry::new("renegadebox", &format!("{}:{name}", cfg.device_id))?
+                .delete_credential()
+                .map_err(|e| anyhow!("keychain delete failed: {e}")),
+            KeyStoreKind::InsecureFile => {
+                let mut map = self.read_secret_file()?;
+                map.remove(name);
+                if map.is_empty() {
+                    match std::fs::remove_file(self.secrets_path()) {
+                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+                        _ => Ok(()),
+                    }
+                } else {
+                    write_private(&self.secrets_path(), serde_json::to_string_pretty(&map)?.as_bytes())
+                }
+            }
+        }
+    }
+
     fn read_secret_file(&self) -> Result<BTreeMap<String, String>> {
         match std::fs::read_to_string(self.secrets_path()) {
             Ok(t) => Ok(serde_json::from_str(&t)?),

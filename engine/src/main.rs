@@ -64,6 +64,19 @@ enum Cmd {
     },
     /// Show configuration and pending changes.
     Status,
+    /// Move this device's secrets to another key store (keychain is recommended).
+    Keystore {
+        #[arg(value_enum)]
+        to: KeyStoreArg,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum KeyStoreArg {
+    /// The OS credential manager (macOS Keychain, Windows Credential Manager, Secret Service).
+    Keychain,
+    /// A 0600 file in the profile directory. Readable by any program running as you.
+    InsecureFile,
 }
 
 fn passphrase(confirm: bool) -> Result<String> {
@@ -201,6 +214,19 @@ async fn main() -> Result<()> {
             let prof = profile.clone();
             let mut e = Engine::open(profile).await?;
             renegadebox_engine::watch::run(&mut e, &prof, Duration::from_secs(poll_secs.max(1))).await?;
+        }
+        Cmd::Keystore { to } => {
+            let mut cfg = profile.load()?;
+            let target = match to {
+                KeyStoreArg::Keychain => KeyStoreKind::Keychain,
+                KeyStoreArg::InsecureFile => KeyStoreKind::InsecureFile,
+            };
+            if cfg.key_store == target {
+                println!("Secrets are already stored in {target:?}.");
+            } else {
+                profile.move_secrets(&mut cfg, target)?;
+                println!("Moved this device's secrets to {target:?} and removed the old copies.");
+            }
         }
         Cmd::Status => {
             let mut e = Engine::open(profile).await?;

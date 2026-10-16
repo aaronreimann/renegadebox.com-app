@@ -73,9 +73,6 @@ pub async fn run_background_watcher(
             continue;
         }
 
-        // Try migrating keychain to silent app keystore once if unlocked
-        let _ = migrate_keychain_to_silent_keystore(&profile);
-
         let mut engine = match Engine::open(profile.clone()).await {
             Ok(e) => e,
             Err(err) => {
@@ -230,8 +227,8 @@ pub async fn get_vault_status() -> Result<VaultStatus, String> {
     }
 
     let key_store_str = match cfg.key_store {
-        renegadebox_engine::config::KeyStoreKind::Keychain => "macOS Keychain (Hardware-backed)",
-        renegadebox_engine::config::KeyStoreKind::InsecureFile => "App-Protected Private Keystore (Zero Prompts)",
+        renegadebox_engine::config::KeyStoreKind::Keychain => "System keychain",
+        renegadebox_engine::config::KeyStoreKind::InsecureFile => "Unprotected file (readable by any app running as you)",
     };
 
     Ok(VaultStatus {
@@ -796,40 +793,18 @@ pub fn export_file_copy(path: String) -> Result<String, String> {
     Ok(dst.to_string_lossy().to_string())
 }
 
-pub fn migrate_keychain_to_silent_keystore(profile: &Profile) -> Result<bool, String> {
-    if !profile.config_path().exists() {
-        return Ok(false);
-    }
-    let mut cfg = profile.load().map_err(|e| e.to_string())?;
-    if cfg.key_store == renegadebox_engine::config::KeyStoreKind::Keychain {
-        let s3_secret = profile
-            .get_secret(&cfg, renegadebox_engine::config::SECRET_S3)
-            .map_err(|e| format!("Keychain s3 secret: {e}"))?;
-        let master = profile
-            .get_secret(&cfg, renegadebox_engine::config::SECRET_MASTER)
-            .map_err(|e| format!("Keychain master key: {e}"))?;
-        let device_token = profile
-            .get_secret(&cfg, renegadebox_engine::config::SECRET_DEVICE_TOKEN)
-            .ok();
-
-        // Switch config to InsecureFile (Silent Private App Keystore)
-        cfg.key_store = renegadebox_engine::config::KeyStoreKind::InsecureFile;
-        profile.set_secret(&cfg, renegadebox_engine::config::SECRET_S3, &s3_secret).map_err(|e| e.to_string())?;
-        profile.set_secret(&cfg, renegadebox_engine::config::SECRET_MASTER, &master).map_err(|e| e.to_string())?;
-        if let Some(token) = device_token {
-            let _ = profile.set_secret(&cfg, renegadebox_engine::config::SECRET_DEVICE_TOKEN, &token);
-        }
-        profile.save(&cfg).map_err(|e| e.to_string())?;
-        eprintln!("[Keystore] Successfully migrated credentials to silent private app keystore.");
-        return Ok(true);
-    }
-    Ok(false)
-}
-
+/// Move this device's secrets between the system keychain and the (unprotected) file store.
 #[tauri::command]
-pub fn migrate_to_silent_keystore() -> Result<bool, String> {
+pub fn set_key_store(use_keychain: bool) -> Result<String, String> {
     let profile = Profile::locate().map_err(|e| e.to_string())?;
-    migrate_keychain_to_silent_keystore(&profile)
+    let mut cfg = profile.load().map_err(|e| e.to_string())?;
+    let to = if use_keychain {
+        renegadebox_engine::config::KeyStoreKind::Keychain
+    } else {
+        renegadebox_engine::config::KeyStoreKind::InsecureFile
+    };
+    profile.move_secrets(&mut cfg, to).map_err(|e| format!("{e:#}"))?;
+    Ok(if use_keychain { "System keychain".into() } else { "Unprotected file".into() })
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -906,8 +881,8 @@ pub async fn setup_vault(
         return Err("Secret Access Key cannot be empty".to_string());
     }
     let passphrase = payload.passphrase;
-    if passphrase.len() < 6 {
-        return Err("Passphrase must be at least 6 characters long".to_string());
+    if passphrase.chars().count() < 12 {
+        return Err("Passphrase must be at least 12 characters — it is the only thing protecting your files".to_string());
     }
 
     let device_name = match payload.device_name {
@@ -926,7 +901,8 @@ pub async fn setup_vault(
         if trimmed.is_empty() { None } else { Some(trimmed) }
     });
 
-    // Default to silent, zero-prompt keystore for non-technical users
+    // Secrets belong in the OS keychain. Repeated macOS prompts mean the app is not signed
+    // with a stable identity (see scripts/setup-signing.ts), not that the keychain is wrong.
     let mut cfg = renegadebox_engine::config::Config {
         folder: canonical_folder.clone(),
         bucket: bucket.clone(),
@@ -935,7 +911,7 @@ pub async fn setup_vault(
         access_key_id: access_key_id.clone(),
         device_id: uuid::Uuid::new_v4().to_string(),
         device_name: device_name.clone(),
-        key_store: renegadebox_engine::config::KeyStoreKind::InsecureFile,
+        key_store: renegadebox_engine::config::KeyStoreKind::Keychain,
         vault_pin: String::new(),
         hub_url: hub_url.clone(),
     };
