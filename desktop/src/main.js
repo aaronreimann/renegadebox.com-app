@@ -1406,12 +1406,14 @@ Photos and media go to Media/Photos`,
         <div class="desktop-sidebar-top">
           <div class="brand-header" data-tauri-drag-region>
             <div class="brand-info" data-tauri-drag-region>
-              <span class="brand-icon">${icons.box(18)}</span>
-              <span class="brand-title">RenegadeBox</span>
-            </div>
-            <div class="sidebar-status-pill ${statusClass}" title="${escapeHtml(st.title)}${st.detail ? ` - ${escapeHtml(st.detail)}` : ""}">
-              <span class="dot"></span>
-              <span>${escapeHtml(st.title)}</span>
+              <span class="brand-icon">${icons.box(20)}</span>
+              <div class="brand-details" data-tauri-drag-region>
+                <span class="brand-title">RenegadeBox</span>
+                <div class="sidebar-status-pill ${statusClass}" title="${escapeHtml(st.title)}${st.detail ? ` - ${escapeHtml(st.detail)}` : ""}">
+                  <span class="dot"></span>
+                  <span class="status-pill-text">${escapeHtml(st.title)}</span>
+                </div>
+              </div>
             </div>
           </div>
           <nav class="sidebar-nav">

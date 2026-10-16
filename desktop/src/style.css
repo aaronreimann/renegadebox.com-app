@@ -759,9 +759,9 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
 }
 
 .desktop-sidebar {
-  width: 250px;
-  min-width: 250px;
-  flex: 0 0 250px;
+  width: 256px;
+  min-width: 256px;
+  flex: 0 0 256px;
   background: var(--sidebar-bg);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -784,25 +784,35 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
 .brand-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 4px 4px;
+  padding: 2px 4px 4px;
 }
 
 .brand-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  width: 100%;
 }
 
 .brand-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   background: var(--accent);
   color: var(--accent-text);
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(47, 107, 219, 0.22);
+}
+
+.brand-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .brand-title {
@@ -810,32 +820,58 @@ input:focus-visible, textarea:focus-visible, button:focus-visible { outline: non
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
+  line-height: 1.15;
 }
 
 .sidebar-status-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
+  padding: 2px 8px;
+  border-radius: 12px;
   font-size: 11px;
   font-weight: 500;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
   white-space: nowrap;
-  flex-shrink: 0;
+  align-self: flex-start;
+  max-width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
 }
-.sidebar-status-pill.status-ok { color: var(--ok); border-color: rgba(46, 139, 87, 0.25); }
-.sidebar-status-pill.status-syncing { color: var(--accent); border-color: rgba(47, 107, 219, 0.25); }
-.sidebar-status-pill.status-paused { color: var(--warn); border-color: rgba(178, 106, 0, 0.25); }
-.sidebar-status-pill.status-attention { color: var(--danger); border-color: rgba(196, 50, 43, 0.25); }
-.sidebar-status-pill.status-error { color: var(--danger); border-color: rgba(196, 50, 43, 0.25); }
+.sidebar-status-pill .status-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-status-pill.status-ok {
+  color: var(--ok);
+  background: rgba(46, 139, 87, 0.08);
+  border-color: rgba(46, 139, 87, 0.25);
+}
+.sidebar-status-pill.status-syncing {
+  color: var(--accent);
+  background: rgba(47, 107, 219, 0.08);
+  border-color: rgba(47, 107, 219, 0.25);
+}
+.sidebar-status-pill.status-paused {
+  color: var(--warn);
+  background: rgba(178, 106, 0, 0.08);
+  border-color: rgba(178, 106, 0, 0.25);
+}
+.sidebar-status-pill.status-attention,
+.sidebar-status-pill.status-error {
+  color: var(--danger);
+  background: rgba(196, 50, 43, 0.08);
+  border-color: rgba(196, 50, 43, 0.25);
+}
 .sidebar-status-pill .dot {
-  width: 7px;
-  height: 7px;
+  width: 6.5px;
+  height: 6.5px;
   border-radius: 50%;
   background: currentColor;
+  flex-shrink: 0;
 }
 @keyframes sync-pulse {
   0% { transform: scale(1); opacity: 1; }
