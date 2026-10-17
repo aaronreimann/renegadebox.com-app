@@ -1,0 +1,36 @@
+# RenegadeBox account service: API Worker + D1 + one Durable Object per account (relay).
+# Runs on the Workers free plan. See docs/ACCOUNTS.md.
+
+name = "renegadebox-cloud"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+# The Cloudflare account that owns renegadebox.com. Pinned so a key that can
+# reach several accounts can never deploy this anywhere else.
+account_id = "7aac53445065525b5902d3b4e056efab"
+
+# Custom domain: Cloudflare creates the DNS record and certificate.
+routes = [{ pattern = "app.renegadebox.com", custom_domain = true }]
+
+# PEPPER is a secret: `wrangler secret put PEPPER` in production (scripts/deploy.ts sets it once),
+# and cloud/.dev.vars (gitignored) for local development.
+
+[vars]
+PUBLIC_URL = "https://app.renegadebox.com"
+# Google sign-in: the client ID is public; GOOGLE_CLIENT_SECRET and SETUP_KEK are secrets.
+GOOGLE_CLIENT_ID = "714037738301-mm6qb3cpooasvkpcjsp2dv96pnj609i6.apps.googleusercontent.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "renegadebox"
+# Placeholder. scripts/deploy.ts creates the D1 database if needed and writes its id here.
+database_id = "16b4f7da-ca20-4bf4-8635-30653e38d43d"
+migrations_dir = "migrations"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "AccountHub"
+
+# The free plan only allows SQLite-backed Durable Objects.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AccountHub"]

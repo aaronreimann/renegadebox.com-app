@@ -7,3 +7,6 @@ dist/
 .DS_Store
 .claude/worktrees/
 *.appex
+cloud/.wrangler
+cloud/node_modules
+cloud/.dev.vars
