@@ -2,7 +2,7 @@
 
 RenegadeBox is a Dropbox-style synced folder that stores everything in **your own** S3 bucket (AWS S3, Cloudflare R2, Backblaze B2, or any S3-compatible store). It's end-to-end encrypted: the bucket only ever sees ciphertext, including file names, and the server never sees your files or your keys.
 
-How it works and why: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Living spec and test checklist: [ISA.md](ISA.md).
+How it works and why: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Layout
 

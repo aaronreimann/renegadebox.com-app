@@ -4,8 +4,8 @@
 name = "renegadebox-cloud"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
-# The Cloudflare account that owns renegadebox.com. Pinned so a key that can
-# reach several accounts can never deploy this anywhere else.
+# The Cloudflare account that owns renegadebox.com. Pinned so a key that can reach several
+# accounts can never deploy this anywhere else. Change it to deploy your own copy.
 account_id = "7aac53445065525b5902d3b4e056efab"
 
 # Custom domain: Cloudflare creates the DNS record and certificate.

@@ -10,3 +10,8 @@ dist/
 cloud/.wrangler
 cloud/node_modules
 cloud/.dev.vars
+
+# Local AI working notes; not part of the project.
+HANDOFF_*.md
+ISA.md
+docs/HANDOVER.md
