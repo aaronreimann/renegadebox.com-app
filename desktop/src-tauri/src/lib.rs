@@ -1,4 +1,7 @@
+mod account;
+mod activity;
 pub mod commands;
+mod routing;
 mod windows;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,6 +23,7 @@ pub fn run() {
         runtime: Arc::new(Mutex::new(commands::SyncRuntime::default())),
     };
     let watcher_for_setup = watcher_handle.clone();
+    let setup_sync_tx = watcher_handle.tx.clone();
 
     tauri::Builder::default()
         // Must be registered first: a second launch just brings up the main window.
@@ -36,6 +40,10 @@ pub fn run() {
             let watcher_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 commands::run_background_watcher(watcher_app, watcher_rx, watcher_for_setup).await;
+            });
+            let account_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                account::run_setup_sync_loop(account_app, setup_sync_tx).await;
             });
 
             let folder_i = MenuItem::with_id(app, "folder", "Open RenegadeBox folder", true, None::<&str>)?;
@@ -80,10 +88,12 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
+                        rect,
                         ..
                     } = event
                     {
-                        windows::toggle_main_window(tray.app_handle());
+                        windows::toggle_popover(tray.app_handle(), position, rect);
                     }
                 })
                 .build(app)?;
@@ -122,6 +132,7 @@ pub fn run() {
             commands::get_vault_status,
             commands::get_sync_overview,
             commands::list_recent_files,
+            commands::get_sync_activity,
             commands::list_conflicts,
             commands::resolve_conflict,
             commands::pause_sync,
@@ -133,6 +144,7 @@ pub fn run() {
             commands::open_settings,
             commands::open_setup,
             commands::hide_popover,
+            commands::open_main_window,
             commands::close_window,
             commands::quit_app,
             commands::update_vault_config,
@@ -146,9 +158,41 @@ pub fn run() {
             commands::save_ai_config,
             commands::scan_nas_directories,
             commands::test_ai_routing,
+            commands::suggest_rules_from_nas,
+            commands::translate_rules,
             commands::choose_folder,
+            commands::pick_sync_folder,
             commands::list_detected_volumes,
-            commands::open_finder_extensions
+            commands::open_finder_extensions,
+            commands::add_to_finder_favorites,
+            commands::get_ai_usage,
+            commands::clear_ai_usage,
+            commands::get_nas_transfers,
+            commands::clear_nas_transfers,
+            commands::relocate_nas_transfer,
+            commands::revert_nas_transfer_to_staging,
+            commands::get_nas_staging_status,
+            commands::process_nas_ingest,
+            routing::get_routes,
+            routing::save_route,
+            routing::delete_route,
+            routing::run_route_now,
+            commands::get_review_queue,
+            commands::approve_review_item,
+            commands::dismiss_review_item,
+            commands::get_rule_suggestions,
+            commands::dismiss_rule_suggestion,
+            commands::check_rule,
+            commands::save_routing_rules,
+            commands::undo_rules_change,
+            account::account_status,
+            account::account_create,
+            account::account_sign_in,
+            account::account_google_sign_in,
+            account::account_sign_out,
+            account::account_devices,
+            account::account_remove_device,
+            account::account_change_password
         ])
         .run(tauri::generate_context!())
         .expect("error while running RenegadeBox");

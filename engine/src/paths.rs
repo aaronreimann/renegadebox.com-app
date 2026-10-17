@@ -67,6 +67,17 @@ pub fn is_ignored(name: &str) -> bool {
         || (name.starts_with(".~lock.") && name.ends_with('#'))
 }
 
+/// Top-level folders of the sync root that stay on this device: the drop folders that file
+/// routing empties onto a NAS. Only the root-level name is local; a "To NAS" folder deeper in
+/// the tree syncs normally. Files under these that were synced by an older build are left
+/// alone (never published as deleted) — see Engine::scan.
+pub const LOCAL_ONLY_ROOT_DIRS: &[&str] = &["To NAS", ".nas_staging"];
+
+pub fn is_local_only(rel: &str) -> bool {
+    let top = rel.split('/').next().unwrap_or(rel);
+    LOCAL_ONLY_ROOT_DIRS.contains(&top)
+}
+
 pub fn rel_is_ignored(rel: &str) -> bool {
     rel.split('/').any(is_ignored)
 }
@@ -122,6 +133,10 @@ mod tests {
         assert!(is_ignored("~$report.docx"));
         assert!(!is_ignored("report.docx"));
         assert!(rel_is_ignored("a/.rbox-tmp-x"));
+        assert!(is_local_only("To NAS/backup.zip"));
+        assert!(is_local_only(".nas_staging/x"));
+        assert!(!is_local_only("Clients/To NAS/backup.zip"));
+        assert!(!is_ignored("To NAS"));
     }
 
     #[test]

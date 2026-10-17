@@ -11,6 +11,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::{debug, error, info, warn};
 
 #[derive(Clone, Debug)]
@@ -64,6 +65,15 @@ enum HubIncoming {
     },
 }
 
+/// The schema allows leaving `sealed_entry` out but not sending it as null.
+fn journal_appended_message(event: &AppendedEvent) -> serde_json::Value {
+    let mut payload = serde_json::json!({ "seq": event.seq, "object_key": event.object_key });
+    if let Some(entry) = &event.sealed_entry {
+        payload["sealed_entry"] = serde_json::Value::String(entry.clone());
+    }
+    serde_json::json!({ "type": "journal_appended", "payload": payload })
+}
+
 /// Runs the Hub WebSocket client with automatic reconnection and backoff.
 pub async fn run_hub_client(
     config: HubClientConfig,
@@ -99,7 +109,13 @@ async fn connect_and_run(
     appended_rx: &mut mpsc::UnboundedReceiver<AppendedEvent>,
 ) -> Result<bool> {
     debug!("Connecting to Hub at {}...", config.hub_url);
-    let (mut ws, _) = connect_async(&config.hub_url)
+    // The account server authenticates the upgrade itself, then the socket repeats it in auth_init.
+    let mut request = config.hub_url.as_str().into_client_request().context("invalid Hub URL")?;
+    request.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", config.device_token).parse().context("device token is not a valid header value")?,
+    );
+    let (mut ws, _) = connect_async(request)
         .await
         .with_context(|| format!("cannot connect to Hub at {}", config.hub_url))?;
 
@@ -197,14 +213,7 @@ async fn connect_and_run(
                 }
             }
             Some(appended) = appended_rx.recv() => {
-                let msg = serde_json::json!({
-                    "type": "journal_appended",
-                    "payload": {
-                        "seq": appended.seq,
-                        "object_key": appended.object_key,
-                        "sealed_entry": appended.sealed_entry,
-                    }
-                });
+                let msg = journal_appended_message(&appended);
                 if let Err(e) = ws.send(Message::Text(msg.to_string())).await {
                     warn!("Failed to send journal_appended to Hub: {e:#}");
                     return Ok(true);
@@ -282,15 +291,10 @@ mod tests {
             object_key: "rb/journal/dev-id/00000000000000000005".into(),
             sealed_entry: Some("base64ciphertext".into()),
         };
-        let msg = serde_json::json!({
-            "type": "journal_appended",
-            "payload": {
-                "seq": event.seq,
-                "object_key": event.object_key,
-                "sealed_entry": event.sealed_entry,
-            }
-        });
+        let msg = journal_appended_message(&event);
         let msg_str = msg.to_string();
+        let without = journal_appended_message(&AppendedEvent { sealed_entry: None, ..event.clone() });
+        assert!(without["payload"].get("sealed_entry").is_none(), "absent entry must be omitted, not null");
 
         // ISC-100 verification: payload contains only seq, object_key, sealed_entry
         // Must never leak filenames, paths, or hashes

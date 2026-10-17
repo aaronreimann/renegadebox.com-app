@@ -19,8 +19,10 @@ export function splitPath(path: string): { name: string; folder: string } {
   return i < 0 ? { name: path, folder: "" } : { name: path.slice(i + 1), folder: path.slice(0, i) };
 }
 
-export function escapeHtml(s: string): string {
-  return s
+export function escapeHtml(s: unknown): string {
+  if (s == null) return "";
+  const str = typeof s === "string" ? s : String(s);
+  return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

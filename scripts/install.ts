@@ -29,7 +29,7 @@ const IDENTITY = appleDev ?? (identities.includes(LOCAL_IDENTITY) ? LOCAL_IDENTI
 const canSign = IDENTITY !== undefined;
 if (!appleDev) {
   console.warn("! No Apple Development certificate: macOS will ask for Keychain access again after every rebuild.");
-  console.warn("  Fix (free): Xcode → Settings → Accounts → add your Apple ID → Manage Certificates → + → Apple Development.");
+  console.warn("  Fix (free): Xcode → Settings → Apple Accounts → click your name → Manage Certificates… → + → Apple Development.");
 }
 if (canSign) console.log(`Signing as: ${IDENTITY}`);
 
@@ -66,15 +66,15 @@ if (process.argv.includes("--desktop")) {
   const appexDest = join(pluginsDir, "RenegadeBoxFinderSync.appex");
   await $`bun ${join(ROOT, "desktop/finder-sync/build.ts")} ${appexDest}`.env(desktopEnv);
 
-  if (canSign) {
-    await $`codesign --force --sign ${IDENTITY!} --identifier com.renegadebox.desktop.findersync ${appexDest}`.quiet();
-    await $`codesign --force --sign ${IDENTITY!} ${dest}`.quiet();
-  }
+  // build.ts signed the extension with its sandbox entitlements; re-seal the app around it.
+  if (canSign) await $`codesign --force --sign ${IDENTITY!} ${dest}`.quiet();
 
-  // Register with macOS pluginkit
+  // Register with macOS pluginkit, then check it actually took.
   await $`pluginkit -a ${appexDest}`.nothrow().quiet();
   await $`pluginkit -e use -i com.renegadebox.desktop.findersync`.nothrow().quiet();
-  console.log("✓ Registered Finder Sync extension with macOS");
+  const registered = (await $`pluginkit -m -i com.renegadebox.desktop.findersync`.nothrow().quiet()).stdout.toString().trim();
+  if (registered) console.log(`✓ Finder Sync extension registered: ${registered}`);
+  else console.warn("! Finder Sync extension did not register. Enable it in System Settings → General → Login Items & Extensions → File Providers / Finder.");
 
   const sig = await $`codesign -dv --verbose=2 ${dest}`.nothrow().quiet();
   const authority = sig.stderr.toString().match(/Authority=(.*)/)?.[1] ?? "ad-hoc / unsigned";

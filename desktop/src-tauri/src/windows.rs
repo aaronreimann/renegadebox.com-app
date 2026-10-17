@@ -68,14 +68,14 @@ pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+#[allow(dead_code)]
 pub fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<PopoverState>();
-    if let Some(win) = app.get_webview_window(MAIN) {
-        if win.is_visible().unwrap_or(false) {
+    if let Some(win) = app.get_webview_window(MAIN)
+        && win.is_visible().unwrap_or(false) {
             hide_main_window(app);
             return;
         }
-    }
     let just_hidden = state
         .last_hidden
         .lock()
@@ -127,19 +127,79 @@ fn place_popover<R: Runtime>(app: &AppHandle<R>, win: &WebviewWindow<R>, anchor:
     let _ = win.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
 }
 
-#[allow(dead_code)]
+const POPOVER_HEIGHT: f64 = 540.0;
+
+/// The dropdown is created on first use (only `main` is declared in tauri.conf.json).
+fn popover_window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
+    if let Some(win) = app.get_webview_window(POPOVER) {
+        return Some(win);
+    }
+    let url = WebviewUrl::App("index.html?view=popover".into());
+    match WebviewWindowBuilder::new(app, POPOVER, url)
+        .title("RenegadeBox")
+        .inner_size(POPOVER_WIDTH, POPOVER_HEIGHT)
+        .resizable(false)
+        .decorations(false)
+        .visible(false)
+        .skip_taskbar(true)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .minimizable(false)
+        .maximizable(false)
+        .closable(false)
+        .shadow(true)
+        .build()
+    {
+        Ok(win) => Some(win),
+        Err(e) => {
+            eprintln!("[Windows] could not open {POPOVER}: {e}");
+            None
+        }
+    }
+}
+
 pub fn show_popover<R: Runtime>(app: &AppHandle<R>) {
-    show_main_window(app);
+    let Some(win) = popover_window(app) else { return };
+    let state = app.state::<PopoverState>();
+    let anchor = (*state.anchor.lock().unwrap()).or_else(|| fallback_anchor(app));
+    if let Some(a) = anchor {
+        place_popover(app, &win, a);
+    }
+    let _ = win.show();
+    let _ = win.set_focus();
 }
 
-#[allow(dead_code)]
 pub fn hide_popover<R: Runtime>(app: &AppHandle<R>) {
-    hide_main_window(app);
+    if let Some(win) = app.get_webview_window(POPOVER) {
+        let _ = win.hide();
+        *app.state::<PopoverState>().last_hidden.lock().unwrap() = Some(Instant::now());
+    }
 }
 
-#[allow(dead_code)]
-pub fn toggle_popover<R: Runtime>(app: &AppHandle<R>, _click: PhysicalPosition<f64>, _rect: Rect) {
-    toggle_main_window(app);
+/// Left click on the tray icon: open or close the dropdown, like Dropbox.
+pub fn toggle_popover<R: Runtime>(app: &AppHandle<R>, click: PhysicalPosition<f64>, rect: Rect) {
+    let state = app.state::<PopoverState>();
+    *state.anchor.lock().unwrap() = Some(anchor_from_rect(app, click, rect));
+    if let Some(win) = app.get_webview_window(POPOVER)
+        && win.is_visible().unwrap_or(false) {
+            hide_popover(app);
+            return;
+        }
+    // The same click may already have hidden the dropdown through a focus loss.
+    let just_hidden = state
+        .last_hidden
+        .lock()
+        .unwrap()
+        .is_some_and(|t| t.elapsed() < Duration::from_millis(250));
+    if !just_hidden {
+        show_popover(app);
+    }
+}
+
+/// From the dropdown: close it and bring up the full window.
+pub fn open_main_from_popover<R: Runtime>(app: &AppHandle<R>) {
+    hide_popover(app);
+    show_main_window(app);
 }
 
 fn open_window<R: Runtime>(app: &AppHandle<R>, label: &str, title: &str, view: &str, size: (f64, f64)) {
@@ -180,6 +240,7 @@ fn open_window<R: Runtime>(app: &AppHandle<R>, label: &str, title: &str, view: &
 }
 
 pub fn open_settings<R: Runtime>(app: &AppHandle<R>) {
+    hide_popover(app);
     show_main_window(app);
     let _ = app.emit("navigate-tab", "settings");
 }

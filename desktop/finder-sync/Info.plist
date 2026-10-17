@@ -31,7 +31,7 @@
         <key>NSExtensionPointIdentifier</key>
         <string>com.apple.FinderSync</string>
         <key>NSExtensionPrincipalClass</key>
-        <string>RenegadeBoxFinderSync.FinderSync</string>
+        <string>RenegadeBoxFinderSync</string>
     </dict>
 </dict>
 </plist>

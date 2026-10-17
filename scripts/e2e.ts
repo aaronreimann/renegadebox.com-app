@@ -106,6 +106,15 @@ check("ISC-38 70 MB file synced via multipart", tree("b").get("Videos/holiday.mp
 check("ISC-35 .DS_Store not synced", !existsSync(join(box("b"), ".DS_Store")));
 check("ISC-33 NFC path round-trips", tree("b").has("Documents/Taxes/2026/receipt-café".normalize("NFC") + ".txt"));
 
+// --- the root-level NAS drop folder stays on the device; a nested "To NAS" folder is ordinary
+write("a", "To NAS/site-backup.zip", "routed to the NAS, never uploaded");
+write("a", "Clients/To NAS/notes.txt", "an ordinary folder that happens to share the name");
+await rbox("a", "sync");
+await rbox("b", "sync");
+check("Review#4 root drop folder not synced", !existsSync(join(box("b"), "To NAS")));
+check("Review#4 nested 'To NAS' folder still syncs", tree("b").has("Clients/To NAS/notes.txt"));
+rmSync(join(box("a"), "To NAS"), { recursive: true, force: true });
+
 // --- echo suppression: B syncing again must publish nothing
 let before = await journalCount();
 await rbox("b", "sync");

@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 use renegadebox_engine::config::{self, Config, KeyStoreKind, Profile, SECRET_MASTER, SECRET_S3};
 use renegadebox_engine::crypto::Vault;
 use renegadebox_engine::engine::{self, Engine};
+use renegadebox_engine::account;
 
 /// RenegadeBox — end-to-end-encrypted sync into your own S3 bucket.
 #[derive(Parser)]
@@ -69,6 +70,76 @@ enum Cmd {
         #[arg(value_enum)]
         to: KeyStoreArg,
     },
+    /// Your RenegadeBox account: sign in on any device and it is set up for you.
+    Account {
+        /// Account server.
+        #[arg(long, env = "RBOX_SERVER", default_value = account::DEFAULT_SERVER, global = true)]
+        server: String,
+        #[command(subcommand)]
+        cmd: AccountCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum AccountCmd {
+    /// Create an account from this device's setup.
+    Create {
+        #[arg(long)]
+        email: String,
+    },
+    /// Sign in and set this device up from your account.
+    Login {
+        #[arg(long)]
+        email: String,
+        /// Where to put the RenegadeBox folder (default: the same place as on your other devices).
+        #[arg(long)]
+        folder: Option<PathBuf>,
+        #[arg(long)]
+        device_name: Option<String>,
+        /// Store secrets in a 0600 file instead of the OS keychain (headless servers, tests).
+        #[arg(long)]
+        insecure_file_keystore: bool,
+    },
+    /// Sign in with Google in your browser and set this device up from your account.
+    Google {
+        /// Where to put the RenegadeBox folder (default: the same place as on your other devices).
+        #[arg(long)]
+        folder: Option<PathBuf>,
+        #[arg(long)]
+        device_name: Option<String>,
+        /// Store secrets in a 0600 file instead of the OS keychain (headless servers, tests).
+        #[arg(long)]
+        insecure_file_keystore: bool,
+    },
+    /// Sign this device out. Files and storage settings stay.
+    Logout,
+    /// Show which account this device is signed in to.
+    Status,
+    /// List the devices signed in to your account.
+    Devices,
+    /// Sign another device out of your account.
+    Remove { device_id: String },
+    /// Set a new account password (works without the old one from any signed-in device).
+    Password,
+    /// Send or receive setup changes now.
+    Sync,
+}
+
+/// `RBOX_ACCOUNT_PASSWORD`, else prompted.
+fn account_password(confirm: bool) -> Result<String> {
+    if let Ok(p) = std::env::var("RBOX_ACCOUNT_PASSWORD") {
+        return Ok(p);
+    }
+    let p = rpassword::prompt_password("Account password: ")?;
+    if confirm {
+        if p.chars().count() < account::MIN_PASSWORD {
+            bail!("your password needs at least {} characters", account::MIN_PASSWORD);
+        }
+        if rpassword::prompt_password("Confirm password: ")? != p {
+            bail!("passwords do not match");
+        }
+    }
+    Ok(p)
 }
 
 #[derive(Clone, Copy, clap::ValueEnum)]
@@ -173,6 +244,7 @@ async fn main() -> Result<()> {
                 vault_pin: String::new(),
                 hub_url,
                 ai: Default::default(),
+                account: None,
             };
             let storage = engine::storage_for(&cfg, &secret);
             let exists = storage
@@ -229,6 +301,12 @@ async fn main() -> Result<()> {
                 println!("Moved this device's secrets to {target:?} and removed the old copies.");
             }
         }
+        Cmd::Account { server, cmd } => {
+            let res = run_account(&profile, &server, cmd).await;
+            if let Err(e) = res {
+                bail!("{}", account::friendly_error(&e));
+            }
+        }
         Cmd::Status => {
             let mut e = Engine::open_local(profile)?;
             e.scan()?;
@@ -240,7 +318,82 @@ async fn main() -> Result<()> {
             println!("bucket:   s3://{}{}", cfg.bucket, cfg.endpoint.as_deref().map(|e| format!(" via {e}")).unwrap_or_default());
             println!("device:   {} ({})", cfg.device_name, cfg.device_id);
             println!("keystore: {:?}", cfg.key_store);
+            if let Some(a) = &cfg.account {
+                println!("account:  {} ({})", a.email, a.server);
+            }
             println!("synced files: {tracked}   pending local changes: {pending}");
+        }
+    }
+    Ok(())
+}
+
+async fn run_account(profile: &Profile, server: &str, cmd: AccountCmd) -> Result<()> {
+    match cmd {
+        AccountCmd::Create { email } => {
+            let pass = account_password(true)?;
+            let cfg = account::create_account(profile, server, &email, &pass).await?;
+            println!("Created your RenegadeBox account and saved this device's setup to it.");
+            println!("On another device, run `rbox account login --email {}` (or sign in from the app).", cfg.account.map(|a| a.email).unwrap_or(email));
+        }
+        AccountCmd::Login { email, folder, device_name, insecure_file_keystore } => {
+            let pass = account_password(false)?;
+            let opts = account::SignInOptions { folder, device_name, insecure_file_keystore };
+            let cfg = account::sign_in(profile, server, &email, &pass, opts).await?;
+            println!("Signed in. \"{}\" syncs {} <-> s3://{}", cfg.device_name, cfg.folder.display(), cfg.bucket);
+        }
+        AccountCmd::Google { folder, device_name, insecure_file_keystore } => {
+            let opts = account::SignInOptions { folder, device_name, insecure_file_keystore };
+            let cfg = account::google_sign_in(profile, server, opts, |url| {
+                println!("Opening Google sign-in in your browser. If it doesn't open, visit:\n{url}\n");
+                if std::env::var_os("RBOX_NO_BROWSER").is_none() {
+                    let _ = std::process::Command::new("open").arg(url).status();
+                }
+                Ok(())
+            })
+            .await?;
+            println!("Signed in. \"{}\" syncs {} <-> s3://{}", cfg.device_name, cfg.folder.display(), cfg.bucket);
+        }
+        AccountCmd::Logout => {
+            account::sign_out(profile).await?;
+            println!("Signed out. This device keeps syncing with its current settings.");
+        }
+        AccountCmd::Status => match profile.load().ok().and_then(|c| c.account) {
+            Some(a) => println!(
+                "Signed in as {}{} on {} (setup version {}).",
+                a.email,
+                if a.is_google() { " with Google" } else { "" },
+                a.server,
+                a.setup_version
+            ),
+            None => println!("Not signed in."),
+        },
+        AccountCmd::Devices => {
+            for d in account::devices(profile).await? {
+                println!(
+                    "{}{}  {}  last seen {}",
+                    d.name,
+                    if d.current { " (this device)" } else { "" },
+                    d.id,
+                    d.last_seen_at.as_deref().unwrap_or("never")
+                );
+            }
+        }
+        AccountCmd::Remove { device_id } => {
+            account::remove_device(profile, &device_id).await?;
+            println!("Signed that device out.");
+        }
+        AccountCmd::Password => {
+            let pass = account_password(true)?;
+            account::change_password(profile, &pass).await?;
+            println!("Password changed. Your other devices stay signed in.");
+        }
+        AccountCmd::Sync => {
+            let r = account::sync_setup(profile).await?;
+            println!("{}", match r {
+                account::SetupSync::Unchanged => "Setup is already up to date.",
+                account::SetupSync::Sent => "Sent this device's setup changes to your account.",
+                account::SetupSync::Received => "Applied setup changes from your account.",
+            });
         }
     }
     Ok(())

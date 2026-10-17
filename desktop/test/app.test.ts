@@ -119,15 +119,23 @@ describe("rust shell", () => {
     expect(lib).toContain("tauri_plugin_single_instance::init");
   });
 
+  it("registers the route commands", () => {
+    const routing = read("src-tauri/src/routing.rs");
+    for (const cmd of ["get_routes", "save_route", "delete_route", "run_route_now"]) {
+      expect(routing).toMatch(new RegExp(`fn ${cmd}\\b`));
+      expect(lib).toContain(`routing::${cmd}`);
+    }
+  });
+
   it("exposes the popover data commands", () => {
-    for (const cmd of ["get_sync_overview", "list_recent_files", "list_conflicts", "open_settings", "open_setup", "quit_app"]) {
+    for (const cmd of ["get_sync_overview", "list_recent_files", "get_sync_activity", "open_main_window", "list_conflicts", "open_settings", "open_setup", "quit_app"]) {
       expect(commands).toMatch(new RegExp(`fn ${cmd}\\b`));
       expect(lib).toContain(`commands::${cmd}`);
     }
   });
 
   it("removed explorer-only commands", () => {
-    for (const cmd of ["delete_file", "rename_file", "create_folder", "pick_and_import_files", "get_file_history", "export_file_copy", "list_synced_files", "add_to_finder_favorites", "open_dashboard"]) {
+    for (const cmd of ["delete_file", "rename_file", "create_folder", "pick_and_import_files", "get_file_history", "export_file_copy", "list_synced_files", "open_dashboard"]) {
       expect(lib).not.toContain(`commands::${cmd}`);
       expect(commands).not.toContain(`fn ${cmd}`);
     }

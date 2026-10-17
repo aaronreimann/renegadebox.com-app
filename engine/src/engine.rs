@@ -21,6 +21,7 @@ use crate::journal::{self, Action, JournalEntry};
 use crate::paths;
 use crate::state::{FileRow, State};
 use crate::storage::{PutIfAbsentError, S3Settings, Storage};
+use crate::activity::{ActivityKind, ActivityPhase};
 
 /// Another device wrote to this device's journal slot: the profile was cloned or restored.
 /// Continuing would fork the journal, so this aborts the whole sync.
@@ -71,6 +72,8 @@ pub struct Engine {
     /// Allow a scan to treat every previously synced file as deleted (see `scan`).
     pub allow_mass_delete: bool,
     pub on_appended: Option<tokio::sync::mpsc::UnboundedSender<crate::hub::AppendedEvent>>,
+    /// Optional per-file progress feed for a UI (see `activity`).
+    pub on_activity: Option<crate::activity::ActivitySender>,
     /// Opened without secrets (see `open_local`): may scan, must never touch the bucket.
     local_only: bool,
 }
@@ -129,7 +132,7 @@ impl Engine {
 
         let state = State::open(&profile.state_path())?;
         let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
-        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None, local_only: false })
+        Ok(Self { keys: Keys::derive(&master), cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None, on_activity: None, local_only: false })
     }
 
     /// Open for local inspection only (`rbox status`): reads no secrets, so it never
@@ -141,11 +144,21 @@ impl Engine {
         let state = State::open(&profile.state_path())?;
         let root = cfg.folder.canonicalize().with_context(|| format!("sync folder {}", cfg.folder.display()))?;
         let keys = Keys::derive(&SecretKey::random());
-        Ok(Self { keys, cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None, local_only: true })
+        Ok(Self { keys, cfg, profile, state, storage, root, report: SyncReport::default(), allow_mass_delete: false, on_appended: None, on_activity: None, local_only: true })
     }
 
     pub fn set_on_appended(&mut self, tx: tokio::sync::mpsc::UnboundedSender<crate::hub::AppendedEvent>) {
         self.on_appended = Some(tx);
+    }
+
+    pub fn set_on_activity(&mut self, tx: crate::activity::ActivitySender) {
+        self.on_activity = Some(tx);
+    }
+
+    fn activity(&self, path: &str, kind: crate::activity::ActivityKind, phase: crate::activity::ActivityPhase, size: Option<u64>) {
+        if let Some(tx) = &self.on_activity {
+            let _ = tx.send(crate::activity::FileActivity { path: path.to_string(), kind, phase, size });
+        }
     }
 
     pub fn root(&self) -> &Path {
@@ -182,7 +195,8 @@ impl Engine {
         let mut seen = std::collections::HashSet::new();
         let mut unreadable: Vec<String> = Vec::new();
         let walker = WalkDir::new(&self.root).follow_links(false).into_iter().filter_entry(|e| {
-            e.depth() == 0 || !paths::is_ignored(&e.file_name().to_string_lossy())
+            let name = e.file_name().to_string_lossy();
+            e.depth() == 0 || !(paths::is_ignored(&name) || (e.depth() == 1 && paths::LOCAL_ONLY_ROOT_DIRS.contains(&name.as_ref())))
         });
         for entry in walker {
             let entry = match entry {
@@ -224,7 +238,8 @@ impl Engine {
                 }
             }
         }
-        let protected = |path: &str| unreadable.iter().any(|u| path == u || path.starts_with(&format!("{u}/")));
+        // Local-only folders are not walked, so their rows must not read as deleted either.
+        let protected = |path: &str| paths::is_local_only(path) || unreadable.iter().any(|u| path == u || path.starts_with(&format!("{u}/")));
         let rows = self.state.all()?;
         let synced = rows.iter().filter(|r| r.synced_hash.is_some()).count();
         let vanished: Vec<FileRow> = rows
@@ -410,6 +425,16 @@ impl Engine {
     }
 
     async fn apply(&mut self, e: &JournalEntry) -> Result<()> {
+        // Another device (or an older build) may publish into a local-only folder; this
+        // device neither writes nor deletes there.
+        if paths::is_local_only(&e.path) {
+            return Ok(());
+        }
+        if let (Action::Renamed, Some(old)) = (&e.action, e.old_path.as_deref())
+            && paths::is_local_only(old)
+        {
+            return self.apply_put(&e.path, e, None).await;
+        }
         match e.action {
             Action::Added | Action::Modified => self.apply_put(&e.path, e, e.base_hash.as_deref()).await,
             Action::Deleted => self.apply_delete(&e.path, e, e.base_hash.as_deref()),
@@ -499,6 +524,7 @@ impl Engine {
         }
         let tmp_enc = self.profile.tmp_dir().join(format!("{}.enc", uuid::Uuid::new_v4()));
         let tmp_plain = abs.with_file_name(format!("{}{}", paths::TMP_PREFIX, uuid::Uuid::new_v4()));
+        self.activity(rel, ActivityKind::Download, ActivityPhase::Started, e.size);
         let result = async {
             self.storage.get_to_file(&journal::blob_key(blob_id), &tmp_enc).await?;
             crypto::decrypt_file(&self.keys, &plain_hash, &tmp_enc, &tmp_plain)?;
@@ -512,6 +538,7 @@ impl Engine {
         let _ = std::fs::remove_file(&tmp_enc);
         if let Err(err) = result {
             let _ = std::fs::remove_file(&tmp_plain);
+            self.activity(rel, ActivityKind::Download, ActivityPhase::Failed, e.size);
             return Err(err);
         }
         // Clobber check: the user may have edited the file while we were downloading.
@@ -536,6 +563,7 @@ impl Engine {
         row.local_mtime_ns = st.as_ref().map(|s| s.mtime_ns);
         self.state.put(&row)?;
         self.report.downloaded += 1;
+        self.activity(rel, ActivityKind::Download, ActivityPhase::Finished, row.local_size);
         Ok(())
     }
 
@@ -553,6 +581,7 @@ impl Engine {
                     std::fs::remove_file(&abs).with_context(|| format!("delete {rel}"))?;
                     self.remove_empty_parents(&abs);
                     self.report.deleted_local += 1;
+                    self.activity(rel, ActivityKind::DeleteLocal, ActivityPhase::Finished, None);
                 }
                 None => {}
             }
@@ -599,6 +628,7 @@ impl Engine {
         self.state.put(&old_row)?;
         self.state.put(&new_row)?;
         self.report.renamed_local += 1;
+        self.activity(&e.path, ActivityKind::RenameLocal, ActivityPhase::Finished, size);
         Ok(true)
     }
 
@@ -618,7 +648,7 @@ impl Engine {
         if self.local_only {
             bail!("engine opened without secrets cannot sync");
         }
-        let dirty = self.state.dirty()?;
+        let dirty: Vec<FileRow> = self.state.dirty()?.into_iter().filter(|r| !paths::is_local_only(&r.path)).collect();
         // Rename detection: a disappeared synced file + a new file with identical content.
         let mut adds: HashMap<String, FileRow> = HashMap::new();
         for r in dirty.iter().filter(|r| r.synced_hash.is_none() && r.local_hash.is_some()) {
@@ -640,6 +670,8 @@ impl Engine {
                 }
                 warn!("could not publish {} (will retry): {e:#}", row.path);
                 self.report.failed += 1;
+                let kind = if row.local_hash.is_some() { ActivityKind::Upload } else { ActivityKind::DeleteRemote };
+                self.activity(&row.path, kind, ActivityPhase::Failed, row.local_size);
             }
         }
         Ok(())
@@ -653,12 +685,14 @@ impl Engine {
                 Self::set_head(&mut row, &e, None);
                 self.state.put(&row)?;
                 self.report.deleted_remote += 1;
+                self.activity(&row.path, ActivityKind::DeleteRemote, ActivityPhase::Finished, None);
             }
             Some(_) => {
                 let abs = paths::to_abs(&self.root, &row.path)?;
                 // Stat *before* hashing: if the file changes afterwards its mtime will no
                 // longer match, so the next scan re-hashes it instead of trusting a stale hash.
                 let st = stat(&abs).ok_or_else(|| anyhow!("{} disappeared", row.path))?;
+                self.activity(&row.path, ActivityKind::Upload, ActivityPhase::Started, Some(st.size));
                 let tmp_enc = self.profile.tmp_dir().join(format!("{}.enc", uuid::Uuid::new_v4()));
                 let blob = crypto::encrypt_file(&self.keys, &abs, &tmp_enc);
                 let blob = match blob {
@@ -674,6 +708,7 @@ impl Engine {
                 row.local_mtime_ns = Some(st.mtime_ns);
                 if row.synced_hash.as_deref() == Some(hash.as_str()) {
                     let _ = std::fs::remove_file(&tmp_enc);
+                    self.activity(&row.path, ActivityKind::Upload, ActivityPhase::Skipped, Some(st.size));
                     return self.state.put(&row); // edited back to the synced content
                 }
                 let key = journal::blob_key(&blob.blob_id);
@@ -694,6 +729,7 @@ impl Engine {
                 Self::set_head(&mut row, &e, Some(&hash));
                 self.state.put(&row)?;
                 self.report.uploaded += 1;
+                self.activity(&row.path, ActivityKind::Upload, ActivityPhase::Finished, Some(st.size));
             }
         }
         Ok(())
@@ -715,6 +751,7 @@ impl Engine {
         self.state.put(&del)?;
         self.state.put(&add)?;
         self.report.renamed_remote += 1;
+        self.activity(&add.path, ActivityKind::RenameRemote, ActivityPhase::Finished, size);
         Ok(())
     }
 

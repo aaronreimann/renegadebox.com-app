@@ -25,13 +25,14 @@ cpSync(PLIST_SRC, join(OUT_DIR, "Contents/Info.plist"));
 
 // Compile Swift source into executable
 const outBin = join(macosDir, "RenegadeBoxFinderSync");
-await $`swiftc -target arm64-apple-macos13.0 -O -framework Cocoa -framework FinderSync -lsqlite3 -emit-executable -module-name RenegadeBoxFinderSync ${SWIFT_SRC} -o ${outBin}`;
+// An app extension has no main of its own: it must enter through NSExtensionMain, which
+// loads NSExtensionPrincipalClass. Without it swiftc emits an empty main and the process
+// exits the moment Finder launches it.
+await $`swiftc -target arm64-apple-macos13.0 -O -application-extension -framework Cocoa -framework FinderSync -lsqlite3 -emit-executable -module-name RenegadeBoxFinderSync -Xlinker -e -Xlinker _NSExtensionMain ${SWIFT_SRC} -o ${outBin}`;
 
-// Optional signing
-const identity = process.env.APPLE_SIGNING_IDENTITY;
-if (identity) {
-  await $`codesign --force --sign ${identity} --identifier com.renegadebox.desktop.findersync ${OUT_DIR}`.quiet();
-  console.log(`✓ Finder Sync extension built and signed (${identity})`);
-} else {
-  console.log(`✓ Finder Sync extension built (unsigned)`);
-}
+// Always sign with the sandbox entitlements: macOS will not load an unsandboxed extension.
+// Without a signing identity this is an ad-hoc signature, enough for local use.
+const identity = process.env.APPLE_SIGNING_IDENTITY ?? "-";
+const entitlements = join(DIR, "FinderSync.entitlements");
+await $`codesign --force --sign ${identity} --entitlements ${entitlements} --identifier com.renegadebox.desktop.findersync ${OUT_DIR}`.quiet();
+console.log(`✓ Finder Sync extension built and signed (${identity === "-" ? "ad-hoc" : identity})`);

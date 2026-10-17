@@ -13,6 +13,9 @@ pub const SECRET_S3: &str = "s3-secret-access-key";
 pub const SECRET_MASTER: &str = "master-key";
 pub const SECRET_DEVICE_TOKEN: &str = "device-token";
 pub const SECRET_OPENROUTER: &str = "openrouter-api-key";
+pub const SECRET_GROK: &str = "grok-api-key";
+/// Unlocks the setup saved in the RenegadeBox account (see account.rs).
+pub const SECRET_ACCOUNT_KEY: &str = "account-key";
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -37,6 +40,9 @@ pub struct Config {
     pub hub_url: Option<String>,
     #[serde(default)]
     pub ai: crate::ai::AiRouterConfig,
+    /// The RenegadeBox account this device is signed in to, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<crate::account::AccountLink>,
 }
 
 #[derive(Clone, Debug)]
@@ -82,15 +88,21 @@ impl Profile {
     }
 
     pub fn set_secret(&self, cfg: &Config, name: &str, value: &str) -> Result<()> {
+        self.update_secrets(cfg, |map| {
+            map.insert(name.to_string(), value.to_string());
+        })
+    }
+
+    /// Read, change and write the secret map as one step, so two saves at the same time
+    /// (say the OpenRouter and Grok keys) cannot overwrite each other.
+    fn update_secrets(&self, cfg: &Config, change: impl FnOnce(&mut BTreeMap<String, String>)) -> Result<()> {
         match cfg.key_store {
-            KeyStoreKind::Keychain => {
-                let mut map = keychain::load(&cfg.device_id)?;
-                map.insert(name.to_string(), value.to_string());
-                keychain::store(&cfg.device_id, &map)
-            }
+            KeyStoreKind::Keychain => keychain::update(&cfg.device_id, change),
             KeyStoreKind::InsecureFile => {
+                static FILE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+                let _guard = FILE_LOCK.lock().map_err(|_| anyhow!("secret file lock poisoned"))?;
                 let mut map = self.read_secret_file()?;
-                map.insert(name.to_string(), value.to_string());
+                change(&mut map);
                 write_private(&self.secrets_path(), serde_json::to_string_pretty(&map)?.as_bytes())
             }
         }
@@ -122,6 +134,11 @@ impl Profile {
         if let Ok(token) = self.get_secret(cfg, SECRET_DEVICE_TOKEN) {
             values.push((SECRET_DEVICE_TOKEN, token));
         }
+        for name in [SECRET_OPENROUTER, SECRET_GROK, SECRET_ACCOUNT_KEY] {
+            if let Ok(value) = self.get_secret(cfg, name) {
+                values.push((name, value));
+            }
+        }
         let mut target = cfg.clone();
         target.key_store = to;
         for (name, value) in &values {
@@ -141,26 +158,10 @@ impl Profile {
         Ok(())
     }
 
-    fn delete_secret(&self, cfg: &Config, name: &str) -> Result<()> {
-        match cfg.key_store {
-            KeyStoreKind::Keychain => {
-                let mut map = keychain::load(&cfg.device_id)?;
-                map.remove(name);
-                keychain::store(&cfg.device_id, &map)
-            }
-            KeyStoreKind::InsecureFile => {
-                let mut map = self.read_secret_file()?;
-                map.remove(name);
-                if map.is_empty() {
-                    match std::fs::remove_file(self.secrets_path()) {
-                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
-                        _ => Ok(()),
-                    }
-                } else {
-                    write_private(&self.secrets_path(), serde_json::to_string_pretty(&map)?.as_bytes())
-                }
-            }
-        }
+    pub fn delete_secret(&self, cfg: &Config, name: &str) -> Result<()> {
+        self.update_secrets(cfg, |map| {
+            map.remove(name);
+        })
     }
 
     fn read_secret_file(&self) -> Result<BTreeMap<String, String>> {
@@ -211,15 +212,42 @@ mod keychain {
 
     /// Per-process cache: each secret is read from the keychain at most once per run.
     static CACHE: Mutex<Option<HashMap<String, BTreeMap<String, String>>>> = Mutex::new(None);
+    /// Mutex to serialize OS keychain operations and prevent duplicate simultaneous prompts.
+    static LOAD_LOCK: Mutex<()> = Mutex::new(());
 
     fn entry(account: &str) -> Result<keyring::Entry> {
         keyring::Entry::new(SERVICE, account).map_err(|e| anyhow!("keychain: {e}"))
     }
 
+    fn cached(device_id: &str) -> Result<Option<BTreeMap<String, String>>> {
+        Ok(CACHE.lock().map_err(|_| anyhow!("keychain cache poisoned"))?.as_ref().and_then(|c| c.get(device_id)).cloned())
+    }
+
     pub fn load(device_id: &str) -> Result<BTreeMap<String, String>> {
+        if let Some(map) = cached(device_id)? {
+            return Ok(map);
+        }
+        // Serialize so concurrent threads (e.g. the watcher and get_ai_config) do not both
+        // raise a keychain password dialog.
+        let _guard = LOAD_LOCK.lock().map_err(|_| anyhow!("keychain lock poisoned"))?;
+        load_locked(device_id)
+    }
+
+    /// Load and change the item under one lock, so concurrent writers cannot lose updates.
+    pub fn update(device_id: &str, change: impl FnOnce(&mut BTreeMap<String, String>)) -> Result<()> {
+        let _guard = LOAD_LOCK.lock().map_err(|_| anyhow!("keychain lock poisoned"))?;
+        let mut map = load_locked(device_id)?;
+        change(&mut map);
+        store_locked(device_id, &map)
+    }
+
+    /// Caller holds LOAD_LOCK.
+    fn load_locked(device_id: &str) -> Result<BTreeMap<String, String>> {
+        // Another thread may have filled the cache while this one waited for the lock.
         if let Some(map) = CACHE.lock().map_err(|_| anyhow!("keychain cache poisoned"))?.as_ref().and_then(|c| c.get(device_id)) {
             return Ok(map.clone());
         }
+
         let map = match entry(device_id)?.get_password() {
             Ok(json) => serde_json::from_str(&json).map_err(|e| anyhow!("keychain item is not valid: {e}"))?,
             Err(keyring::Error::NoEntry) => migrate_legacy(device_id)?,
@@ -229,7 +257,8 @@ mod keychain {
         Ok(map)
     }
 
-    pub fn store(device_id: &str, map: &BTreeMap<String, String>) -> Result<()> {
+    /// Caller holds LOAD_LOCK.
+    fn store_locked(device_id: &str, map: &BTreeMap<String, String>) -> Result<()> {
         let e = entry(device_id)?;
         if map.is_empty() {
             match e.delete_credential() {
@@ -277,5 +306,39 @@ mod keychain {
             tracing::info!("combined this device's keychain items into one");
         }
         Ok(map)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn concurrent_secret_saves_keep_every_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let profile = Profile { dir: dir.path().to_path_buf() };
+        let cfg = Config {
+            folder: dir.path().join("box"),
+            bucket: "b".into(),
+            region: "us-east-1".into(),
+            endpoint: None,
+            access_key_id: "k".into(),
+            device_id: "d".into(),
+            device_name: "Test".into(),
+            key_store: KeyStoreKind::InsecureFile,
+            vault_pin: String::new(),
+            hub_url: None,
+            ai: Default::default(),
+            account: None,
+        };
+        std::thread::scope(|s| {
+            for i in 0..16 {
+                let (profile, cfg) = (&profile, &cfg);
+                s.spawn(move || profile.set_secret(cfg, &format!("key-{i}"), "v").unwrap());
+            }
+        });
+        for i in 0..16 {
+            assert_eq!(profile.get_secret(&cfg, &format!("key-{i}")).unwrap(), "v", "key-{i} was lost");
+        }
     }
 }
